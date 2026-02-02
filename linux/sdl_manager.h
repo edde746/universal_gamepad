@@ -76,16 +76,16 @@ class SdlManager {
 
   /// Map of joystick ID to connected gamepad info.
   std::unordered_map<SDL_JoystickID, GamepadInfo> gamepads_;
-#endif  // HAVE_SDL3
-
-  /// Event callback.
-  EventCallback callback_;
 
   /// GLib timeout source ID, or 0 if not polling.
   guint poll_source_id_ = 0;
 
   /// Whether SDL has been initialised.
   bool sdl_initialized_ = false;
+#endif  // HAVE_SDL3
+
+  /// Event callback.
+  EventCallback callback_;
 };
 
 #endif  // SDL_MANAGER_H_
