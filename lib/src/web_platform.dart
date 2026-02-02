@@ -25,12 +25,10 @@ class WebGamepad extends GamepadPlatform {
 
   @override
   Stream<GamepadEvent> get events {
-    if (_controller == null) {
-      _controller = StreamController<GamepadEvent>.broadcast(
-        onListen: _startPolling,
-        onCancel: _stopPolling,
-      );
-    }
+    _controller ??= StreamController<GamepadEvent>.broadcast(
+      onListen: _startPolling,
+      onCancel: _stopPolling,
+    );
     return _controller!.stream;
   }
 
@@ -40,7 +38,7 @@ class WebGamepad extends GamepadPlatform {
     final result = <GamepadInfo>[];
     for (final gp in gamepads) {
       if (gp == null) continue;
-      final gamepad = gp as web.Gamepad;
+      final gamepad = gp;
       result.add(GamepadInfo(
         id: 'web_${gamepad.index}',
         name: gamepad.id,
@@ -121,7 +119,7 @@ class WebGamepad extends GamepadPlatform {
 
     for (final gp in gamepads) {
       if (gp == null) continue;
-      final gamepad = gp as web.Gamepad;
+      final gamepad = gp;
       final id = gamepad.index;
       final gamepadId = 'web_$id';
 
@@ -132,7 +130,7 @@ class WebGamepad extends GamepadPlatform {
 
       // Check buttons
       for (var i = 0; i < buttons.length && i < 17; i++) {
-        final button = buttons[i] as web.GamepadButton;
+        final button = buttons[i];
         final pressed = button.pressed;
         final value = button.value;
         final prevPressed = prev?.buttonPressed[i] ?? false;
@@ -152,7 +150,7 @@ class WebGamepad extends GamepadPlatform {
 
       // Check axes
       for (var i = 0; i < axes.length && i < 4; i++) {
-        final value = (axes[i] as JSNumber).toDartDouble;
+        final value = axes[i].toDartDouble;
         final prevValue = prev?.axisValues[i] ?? 0.0;
 
         if ((value - prevValue).abs() > 0.01) {
@@ -170,15 +168,15 @@ class WebGamepad extends GamepadPlatform {
       _previousStates[id] = _GamepadState(
         buttonPressed: [
           for (var i = 0; i < buttons.length && i < 17; i++)
-            (buttons[i] as web.GamepadButton).pressed,
+            buttons[i].pressed,
         ],
         buttonValues: [
           for (var i = 0; i < buttons.length && i < 17; i++)
-            (buttons[i] as web.GamepadButton).value,
+            buttons[i].value,
         ],
         axisValues: [
           for (var i = 0; i < axes.length && i < 4; i++)
-            (axes[i] as JSNumber).toDartDouble,
+            axes[i].toDartDouble,
         ],
       );
     }
