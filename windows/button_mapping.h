@@ -1,11 +1,9 @@
 #ifndef FLUTTER_PLUGIN_BUTTON_MAPPING_H_
 #define FLUTTER_PLUGIN_BUTTON_MAPPING_H_
 
-#include <windows.h>
-#include <xinput.h>
+#include <SDL3/SDL.h>
 
 #include <cstdint>
-#include <vector>
 
 namespace gamepad {
 
@@ -40,20 +38,26 @@ constexpr int kRightStickY = 3;
 constexpr int kCount = 4;
 }  // namespace W3CAxis
 
-/// Maps an XInput digital button bitmask flag to its W3C button index.
-/// Returns -1 if the flag does not map to a known button.
-int XInputButtonToW3C(WORD xinput_button);
+/// Maps an SDL_GamepadButton to its W3C Standard Gamepad button index.
+/// Returns -1 if the button has no standard mapping.
+int SdlButtonToW3C(SDL_GamepadButton button);
 
-/// Returns a list of all XInput digital button bitmask values that we map.
-std::vector<WORD> GetAllXInputDigitalButtons();
+/// Maps an SDL_GamepadAxis to its W3C Standard Gamepad axis index.
+/// Returns -1 if the axis is a trigger (triggers are treated as buttons).
+int SdlAxisToW3C(SDL_GamepadAxis axis);
 
-/// Normalizes a thumbstick axis value (SHORT, -32768..32767) to -1.0..1.0,
-/// applying the given dead zone. Values within the dead zone map to 0.0.
-double NormalizeThumbstick(SHORT value, SHORT dead_zone);
+/// Returns true if the given SDL axis is a trigger axis.
+bool IsTriggerAxis(SDL_GamepadAxis axis);
 
-/// Normalizes a trigger value (BYTE, 0..255) to 0.0..1.0,
-/// applying the given threshold. Values at or below the threshold map to 0.0.
-double NormalizeTrigger(BYTE value, BYTE threshold);
+/// Returns the W3C button index for the given trigger axis.
+/// Only valid when IsTriggerAxis() returns true.
+int TriggerAxisToButtonIndex(SDL_GamepadAxis axis);
+
+/// Normalizes an SDL stick axis value (-32768..32767) to -1.0..1.0.
+double NormalizeStickAxis(int16_t value);
+
+/// Normalizes an SDL trigger axis value (0..32767) to 0.0..1.0.
+double NormalizeTriggerAxis(int16_t value);
 
 }  // namespace gamepad
 

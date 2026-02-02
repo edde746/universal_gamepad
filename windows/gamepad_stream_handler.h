@@ -48,7 +48,7 @@ class GamepadStreamHandler
 
 /// A thin forwarding StreamHandler that delegates OnListen/OnCancel to a
 /// shared GamepadStreamHandler. This is needed because Flutter's
-/// EventChannel::SetStreamHandler takes a unique_ptr, but the XInputManager
+/// EventChannel::SetStreamHandler takes a unique_ptr, but the SdlManager
 /// also needs access to the same handler to send events.
 class ForwardingStreamHandler
     : public flutter::StreamHandler<flutter::EncodableValue> {

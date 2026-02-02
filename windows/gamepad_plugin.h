@@ -8,7 +8,7 @@
 #include <memory>
 
 #include "gamepad_stream_handler.h"
-#include "xinput_manager.h"
+#include "sdl_manager.h"
 
 namespace gamepad {
 
@@ -16,14 +16,14 @@ namespace gamepad {
 ///
 /// Registers an EventChannel (`dev.gamepad/events`) and a
 /// MethodChannel (`dev.gamepad/methods`) with the Flutter engine.
-/// Uses XInput to poll up to 4 gamepads on a background thread.
+/// Uses SDL3 to detect and poll gamepads on a background thread.
 class GamepadPlugin : public flutter::Plugin {
  public:
   static void RegisterWithRegistrar(flutter::PluginRegistrarWindows* registrar);
 
   GamepadPlugin(
       std::shared_ptr<GamepadStreamHandler> stream_handler,
-      std::unique_ptr<XInputManager> xinput_manager);
+      std::unique_ptr<SdlManager> sdl_manager);
 
   ~GamepadPlugin() override;
 
@@ -38,7 +38,7 @@ class GamepadPlugin : public flutter::Plugin {
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
 
   std::shared_ptr<GamepadStreamHandler> stream_handler_;
-  std::unique_ptr<XInputManager> xinput_manager_;
+  std::unique_ptr<SdlManager> sdl_manager_;
 };
 
 }  // namespace gamepad

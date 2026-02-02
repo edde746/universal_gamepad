@@ -1,92 +1,86 @@
 #include "button_mapping.h"
 
-#include <algorithm>
-#include <cmath>
-
 namespace gamepad {
 
-int XInputButtonToW3C(WORD xinput_button) {
-  switch (xinput_button) {
-    case XINPUT_GAMEPAD_A:
+int SdlButtonToW3C(SDL_GamepadButton button) {
+  switch (button) {
+    case SDL_GAMEPAD_BUTTON_SOUTH:
       return W3CButton::kA;
-    case XINPUT_GAMEPAD_B:
+    case SDL_GAMEPAD_BUTTON_EAST:
       return W3CButton::kB;
-    case XINPUT_GAMEPAD_X:
+    case SDL_GAMEPAD_BUTTON_WEST:
       return W3CButton::kX;
-    case XINPUT_GAMEPAD_Y:
+    case SDL_GAMEPAD_BUTTON_NORTH:
       return W3CButton::kY;
-    case XINPUT_GAMEPAD_LEFT_SHOULDER:
+    case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
       return W3CButton::kLeftShoulder;
-    case XINPUT_GAMEPAD_RIGHT_SHOULDER:
+    case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
       return W3CButton::kRightShoulder;
-    case XINPUT_GAMEPAD_BACK:
+    case SDL_GAMEPAD_BUTTON_BACK:
       return W3CButton::kBack;
-    case XINPUT_GAMEPAD_START:
+    case SDL_GAMEPAD_BUTTON_START:
       return W3CButton::kStart;
-    case XINPUT_GAMEPAD_LEFT_THUMB:
+    case SDL_GAMEPAD_BUTTON_LEFT_STICK:
       return W3CButton::kLeftStickButton;
-    case XINPUT_GAMEPAD_RIGHT_THUMB:
+    case SDL_GAMEPAD_BUTTON_RIGHT_STICK:
       return W3CButton::kRightStickButton;
-    case XINPUT_GAMEPAD_DPAD_UP:
+    case SDL_GAMEPAD_BUTTON_DPAD_UP:
       return W3CButton::kDpadUp;
-    case XINPUT_GAMEPAD_DPAD_DOWN:
+    case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
       return W3CButton::kDpadDown;
-    case XINPUT_GAMEPAD_DPAD_LEFT:
+    case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
       return W3CButton::kDpadLeft;
-    case XINPUT_GAMEPAD_DPAD_RIGHT:
+    case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
       return W3CButton::kDpadRight;
+    case SDL_GAMEPAD_BUTTON_GUIDE:
+      return W3CButton::kGuide;
     default:
       return -1;
   }
 }
 
-std::vector<WORD> GetAllXInputDigitalButtons() {
-  return {
-      XINPUT_GAMEPAD_A,
-      XINPUT_GAMEPAD_B,
-      XINPUT_GAMEPAD_X,
-      XINPUT_GAMEPAD_Y,
-      XINPUT_GAMEPAD_LEFT_SHOULDER,
-      XINPUT_GAMEPAD_RIGHT_SHOULDER,
-      XINPUT_GAMEPAD_BACK,
-      XINPUT_GAMEPAD_START,
-      XINPUT_GAMEPAD_LEFT_THUMB,
-      XINPUT_GAMEPAD_RIGHT_THUMB,
-      XINPUT_GAMEPAD_DPAD_UP,
-      XINPUT_GAMEPAD_DPAD_DOWN,
-      XINPUT_GAMEPAD_DPAD_LEFT,
-      XINPUT_GAMEPAD_DPAD_RIGHT,
-  };
+int SdlAxisToW3C(SDL_GamepadAxis axis) {
+  switch (axis) {
+    case SDL_GAMEPAD_AXIS_LEFTX:
+      return W3CAxis::kLeftStickX;
+    case SDL_GAMEPAD_AXIS_LEFTY:
+      return W3CAxis::kLeftStickY;
+    case SDL_GAMEPAD_AXIS_RIGHTX:
+      return W3CAxis::kRightStickX;
+    case SDL_GAMEPAD_AXIS_RIGHTY:
+      return W3CAxis::kRightStickY;
+    default:
+      return -1;
+  }
 }
 
-double NormalizeThumbstick(SHORT value, SHORT dead_zone) {
-  double v = static_cast<double>(value);
-  double dz = static_cast<double>(dead_zone);
-
-  if (std::abs(v) <= dz) {
-    return 0.0;
-  }
-
-  // Map the range [dead_zone, 32767] to [0.0, 1.0] (positive)
-  // and [-32768, -dead_zone] to [-1.0, 0.0] (negative).
-  double max_val = (v > 0) ? 32767.0 : 32768.0;
-  double sign = (v > 0) ? 1.0 : -1.0;
-  double abs_v = std::abs(v);
-
-  double normalized = sign * ((abs_v - dz) / (max_val - dz));
-  return std::clamp(normalized, -1.0, 1.0);
+bool IsTriggerAxis(SDL_GamepadAxis axis) {
+  return axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ||
+         axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
 }
 
-double NormalizeTrigger(BYTE value, BYTE threshold) {
-  if (value <= threshold) {
-    return 0.0;
+int TriggerAxisToButtonIndex(SDL_GamepadAxis axis) {
+  if (axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER) {
+    return W3CButton::kLeftTrigger;
   }
+  if (axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) {
+    return W3CButton::kRightTrigger;
+  }
+  return -1;
+}
 
-  double v = static_cast<double>(value);
-  double t = static_cast<double>(threshold);
+double NormalizeStickAxis(int16_t value) {
+  if (value < -32767) {
+    value = -32767;
+  }
+  return static_cast<double>(value) / 32767.0;
+}
 
-  double normalized = (v - t) / (255.0 - t);
-  return std::clamp(normalized, 0.0, 1.0);
+double NormalizeTriggerAxis(int16_t value) {
+  if (value < 0) {
+    value = 0;
+  }
+  return static_cast<double>(value) / 32767.0;
 }
 
 }  // namespace gamepad

@@ -17,11 +17,11 @@ namespace gamepad {
 // static
 void GamepadPlugin::RegisterWithRegistrar(
     flutter::PluginRegistrarWindows* registrar) {
-  // Create the stream handler (shared between plugin and XInput manager).
+  // Create the stream handler (shared between plugin and SDL manager).
   auto stream_handler = std::make_shared<GamepadStreamHandler>();
 
-  // Create the XInput manager.
-  auto xinput_manager = std::make_unique<XInputManager>(stream_handler);
+  // Create the SDL manager.
+  auto sdl_manager = std::make_unique<SdlManager>(stream_handler);
 
   // Set up the MethodChannel.
   auto method_channel =
@@ -37,7 +37,7 @@ void GamepadPlugin::RegisterWithRegistrar(
 
   // Create the plugin instance.
   auto plugin = std::make_unique<GamepadPlugin>(std::move(stream_handler),
-                                                std::move(xinput_manager));
+                                                std::move(sdl_manager));
 
   // Register the method call handler.
   method_channel->SetMethodCallHandler(
@@ -47,13 +47,13 @@ void GamepadPlugin::RegisterWithRegistrar(
 
   // Register the stream handler. SetStreamHandler requires a unique_ptr, so
   // we use a ForwardingStreamHandler that delegates to the shared handler
-  // that the XInputManager also sends events through.
+  // that the SdlManager also sends events through.
   event_channel->SetStreamHandler(
       std::make_unique<ForwardingStreamHandler>(plugin->stream_handler_));
 
   // Start polling immediately so we capture connections that happen before
   // the Dart side starts listening.
-  plugin->xinput_manager_->StartPolling();
+  plugin->sdl_manager_->StartPolling();
 
   // Transfer ownership to the registrar.
   registrar->AddPlugin(std::move(plugin));
@@ -61,13 +61,13 @@ void GamepadPlugin::RegisterWithRegistrar(
 
 GamepadPlugin::GamepadPlugin(
     std::shared_ptr<GamepadStreamHandler> stream_handler,
-    std::unique_ptr<XInputManager> xinput_manager)
+    std::unique_ptr<SdlManager> sdl_manager)
     : stream_handler_(std::move(stream_handler)),
-      xinput_manager_(std::move(xinput_manager)) {}
+      sdl_manager_(std::move(sdl_manager)) {}
 
 GamepadPlugin::~GamepadPlugin() {
-  if (xinput_manager_) {
-    xinput_manager_->StopPolling();
+  if (sdl_manager_) {
+    sdl_manager_->StopPolling();
   }
 }
 
@@ -77,10 +77,10 @@ void GamepadPlugin::HandleMethodCall(
   const std::string& method = method_call.method_name();
 
   if (method == "listGamepads") {
-    auto gamepads = xinput_manager_->ListGamepads();
+    auto gamepads = sdl_manager_->ListGamepads();
     result->Success(flutter::EncodableValue(gamepads));
   } else if (method == "dispose") {
-    xinput_manager_->StopPolling();
+    sdl_manager_->StopPolling();
     result->Success();
   } else {
     result->NotImplemented();
@@ -93,16 +93,9 @@ void GamepadPlugin::HandleMethodCall(
 // C API wrapper - the entry point that the Flutter Windows embedder calls.
 // ---------------------------------------------------------------------------
 
-// Ensure the symbol is exported from the DLL.
-#ifdef FLUTTER_PLUGIN_IMPL
-#define FLUTTER_EXPORT __declspec(dllexport)
-#else
-#define FLUTTER_EXPORT __declspec(dllimport)
-#endif
-
 extern "C" {
 
-FLUTTER_EXPORT void GamepadPluginCApiRegisterWithRegistrar(
+__declspec(dllexport) void GamepadPluginCApiRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar) {
   gamepad::GamepadPlugin::RegisterWithRegistrar(
       flutter::PluginRegistrarManager::GetInstance()
