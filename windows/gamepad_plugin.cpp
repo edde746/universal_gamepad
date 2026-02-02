@@ -26,13 +26,13 @@ void GamepadPlugin::RegisterWithRegistrar(
   // Set up the MethodChannel.
   auto method_channel =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
-          registrar->messenger(), "dev.gamepad/methods",
+          registrar->messenger(), "dev.universal_gamepad/methods",
           &flutter::StandardMethodCodec::GetInstance());
 
   // Set up the EventChannel.
   auto event_channel =
       std::make_unique<flutter::EventChannel<flutter::EncodableValue>>(
-          registrar->messenger(), "dev.gamepad/events",
+          registrar->messenger(), "dev.universal_gamepad/events",
           &flutter::StandardMethodCodec::GetInstance());
 
   // Create the plugin instance.

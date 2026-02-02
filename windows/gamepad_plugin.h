@@ -14,8 +14,8 @@ namespace gamepad {
 
 /// Windows implementation of the gamepad Flutter plugin.
 ///
-/// Registers an EventChannel (`dev.gamepad/events`) and a
-/// MethodChannel (`dev.gamepad/methods`) with the Flutter engine.
+/// Registers an EventChannel (`dev.universal_gamepad/events`) and a
+/// MethodChannel (`dev.universal_gamepad/methods`) with the Flutter engine.
 /// Uses SDL3 to detect and poll gamepads on a background thread.
 class GamepadPlugin : public flutter::Plugin {
  public:

@@ -82,13 +82,13 @@ void gamepad_plugin_register_with_registrar(
   g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
 
   g_plugin->method_channel = fl_method_channel_new(
-      messenger, "dev.gamepad/methods", FL_METHOD_CODEC(codec));
+      messenger, "dev.universal_gamepad/methods", FL_METHOD_CODEC(codec));
   fl_method_channel_set_method_call_handler(
       g_plugin->method_channel, method_call_cb, g_plugin, nullptr);
 
   // Set up the EventChannel.
   g_plugin->event_channel = fl_event_channel_new(
-      messenger, "dev.gamepad/events", FL_METHOD_CODEC(codec));
+      messenger, "dev.universal_gamepad/events", FL_METHOD_CODEC(codec));
   g_plugin->stream_handler->SetChannel(g_plugin->event_channel);
 
   // Wire the stream handler to the SDL manager: when Dart starts listening

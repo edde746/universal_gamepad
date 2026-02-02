@@ -1,4 +1,4 @@
-package dev.gamepad
+package dev.universal_gamepad
 
 import android.os.Handler
 import android.os.Looper

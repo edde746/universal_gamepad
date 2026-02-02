@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:gamepad/gamepad.dart';
+import 'package:universal_gamepad/universal_gamepad.dart';
 
 void main() {
   runApp(const GamepadDemoApp());

@@ -2,8 +2,8 @@ import FlutterMacOS
 
 /// Entry point for the gamepad macOS plugin.
 ///
-/// Registers a `MethodChannel` (`dev.gamepad/methods`) and an
-/// `EventChannel` (`dev.gamepad/events`) with the Flutter engine.
+/// Registers a `MethodChannel` (`dev.universal_gamepad/methods`) and an
+/// `EventChannel` (`dev.universal_gamepad/events`) with the Flutter engine.
 /// The EventChannel streams gamepad connection, button, and axis events.
 /// The MethodChannel supports `listGamepads` and `dispose`.
 public class GamepadPlugin: NSObject, FlutterPlugin {
@@ -21,13 +21,13 @@ public class GamepadPlugin: NSObject, FlutterPlugin {
 
         // Method channel
         let methodChannel = FlutterMethodChannel(
-            name: "dev.gamepad/methods",
+            name: "dev.universal_gamepad/methods",
             binaryMessenger: registrar.messenger
         )
 
         // Event channel
         let eventChannel = FlutterEventChannel(
-            name: "dev.gamepad/events",
+            name: "dev.universal_gamepad/events",
             binaryMessenger: registrar.messenger
         )
         eventChannel.setStreamHandler(streamHandler)

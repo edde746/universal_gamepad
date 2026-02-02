@@ -5,12 +5,12 @@
 cmake_minimum_required(VERSION 3.10)
 
 # Project-level configuration.
-set(PROJECT_NAME "gamepad")
+set(PROJECT_NAME "universal_gamepad")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
 # This value is used when generating builds using this plugin, so it must
 # not be changed.
-set(PLUGIN_NAME "gamepad_plugin")
+set(PLUGIN_NAME "universal_gamepad_plugin")
 
 # Find required dependencies.
 find_package(PkgConfig REQUIRED)

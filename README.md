@@ -1,4 +1,4 @@
-# gamepad
+# universal_gamepad
 
 Cross-platform Flutter plugin for gamepad input. Provides a unified API for
 connection events, button presses, analog triggers, and thumbstick axes across
@@ -19,13 +19,13 @@ all six Flutter platforms.
 
 ```yaml
 dependencies:
-  gamepad: ^0.1.0
+  universal_gamepad: ^0.1.0
 ```
 
 ## Quick start
 
 ```dart
-import 'package:gamepad/gamepad.dart';
+import 'package:universal_gamepad/universal_gamepad.dart';
 
 // List connected gamepads
 final gamepads = await Gamepad.instance.listGamepads();

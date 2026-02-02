@@ -5,7 +5,7 @@
 import FlutterMacOS
 import Foundation
 
-import gamepad
+import universal_gamepad
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   GamepadPlugin.register(with: registry.registrar(forPlugin: "GamepadPlugin"))

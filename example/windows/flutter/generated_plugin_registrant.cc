@@ -6,7 +6,7 @@
 
 #include "generated_plugin_registrant.h"
 
-#include <gamepad/gamepad_plugin_c_api.h>
+#include <universal_gamepad/gamepad_plugin_c_api.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   GamepadPluginCApiRegisterWithRegistrar(

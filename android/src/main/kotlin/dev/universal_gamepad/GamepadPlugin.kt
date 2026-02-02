@@ -1,4 +1,4 @@
-package dev.gamepad
+package dev.universal_gamepad
 
 import android.app.Activity
 import android.view.InputDevice
@@ -16,8 +16,8 @@ import io.flutter.plugin.common.MethodChannel
 /**
  * Android platform implementation of the gamepad Flutter plugin.
  *
- * Registers a [MethodChannel] (`dev.gamepad/methods`) and an
- * [EventChannel] (`dev.gamepad/events`) with the Flutter engine.
+ * Registers a [MethodChannel] (`dev.universal_gamepad/methods`) and an
+ * [EventChannel] (`dev.universal_gamepad/events`) with the Flutter engine.
  *
  * Wraps the Activity's [Window.Callback] to intercept gamepad key events
  * before Flutter processes them as UI navigation, and attaches a
@@ -49,11 +49,11 @@ class GamepadPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         val handler = GamepadStreamHandler()
         streamHandler = handler
 
-        methodChannel = MethodChannel(binding.binaryMessenger, "dev.gamepad/methods").also {
+        methodChannel = MethodChannel(binding.binaryMessenger, "dev.universal_gamepad/methods").also {
             it.setMethodCallHandler(this)
         }
 
-        eventChannel = EventChannel(binding.binaryMessenger, "dev.gamepad/events").also {
+        eventChannel = EventChannel(binding.binaryMessenger, "dev.universal_gamepad/events").also {
             it.setStreamHandler(handler)
         }
 

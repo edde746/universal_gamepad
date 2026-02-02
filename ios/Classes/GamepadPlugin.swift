@@ -3,8 +3,8 @@ import UIKit
 
 /// Entry point for the gamepad iOS plugin.
 ///
-/// Registers a MethodChannel (`dev.gamepad/methods`) and an
-/// EventChannel (`dev.gamepad/events`) with the Flutter engine.
+/// Registers a MethodChannel (`dev.universal_gamepad/methods`) and an
+/// EventChannel (`dev.universal_gamepad/events`) with the Flutter engine.
 public class GamepadPlugin: NSObject, FlutterPlugin {
 
     private let controllerManager: GCControllerManager
@@ -23,12 +23,12 @@ public class GamepadPlugin: NSObject, FlutterPlugin {
         let controllerManager = GCControllerManager(streamHandler: streamHandler)
 
         let methodChannel = FlutterMethodChannel(
-            name: "dev.gamepad/methods",
+            name: "dev.universal_gamepad/methods",
             binaryMessenger: registrar.messenger()
         )
 
         let eventChannel = FlutterEventChannel(
-            name: "dev.gamepad/events",
+            name: "dev.universal_gamepad/events",
             binaryMessenger: registrar.messenger()
         )
 

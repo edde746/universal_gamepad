@@ -8,8 +8,8 @@ import 'types/gamepad_info.dart';
 
 /// Implementation of [GamepadPlatform] using EventChannel and MethodChannel.
 class MethodChannelGamepad extends GamepadPlatform {
-  final _methodChannel = const MethodChannel('dev.gamepad/methods');
-  final _eventChannel = const EventChannel('dev.gamepad/events');
+  final _methodChannel = const MethodChannel('dev.universal_gamepad/methods');
+  final _eventChannel = const EventChannel('dev.universal_gamepad/events');
 
   Stream<GamepadEvent>? _events;
 

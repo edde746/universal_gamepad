@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gamepad/gamepad.dart';
+import 'package:universal_gamepad/universal_gamepad.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 class MockGamepadPlatform extends GamepadPlatform

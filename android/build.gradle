@@ -1,4 +1,4 @@
-group = "dev.gamepad"
+group = "dev.universal_gamepad"
 version = "1.0"
 
 buildscript {
@@ -24,7 +24,7 @@ apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
 
 android {
-    namespace = "dev.gamepad"
+    namespace = "dev.universal_gamepad"
 
     compileSdk = 34
 

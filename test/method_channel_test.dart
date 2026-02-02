@@ -1,11 +1,11 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gamepad/gamepad.dart';
+import 'package:universal_gamepad/universal_gamepad.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final methodChannel = const MethodChannel('dev.gamepad/methods');
+  final methodChannel = const MethodChannel('dev.universal_gamepad/methods');
 
   group('MethodChannelGamepad', () {
     late MethodChannelGamepad platform;

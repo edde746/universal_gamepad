@@ -5,12 +5,12 @@
 cmake_minimum_required(VERSION 3.14)
 
 # Project-level configuration.
-set(PROJECT_NAME "gamepad")
+set(PROJECT_NAME "universal_gamepad")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
-# The plugin library target name must be "gamepad_plugin" to match what
+# The plugin library target name must be "universal_gamepad_plugin" to match what
 # Flutter's generated_plugins.cmake expects (plugin name + "_plugin").
-set(PLUGIN_NAME "gamepad_plugin")
+set(PLUGIN_NAME "universal_gamepad_plugin")
 
 # Invoke flutter tooling for plugin setup.
 # This must be included before any other rules.

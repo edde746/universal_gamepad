@@ -1,5 +1,5 @@
 Pod::Spec.new do |s|
-  s.name             = 'gamepad'
+  s.name             = 'universal_gamepad'
   s.version          = '0.1.0'
   s.summary          = 'macOS implementation for the gamepad Flutter plugin.'
   s.description      = <<-DESC

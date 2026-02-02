@@ -3,7 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  gamepad
+  universal_gamepad
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
