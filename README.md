@@ -11,7 +11,7 @@ all six Flutter platforms.
 | Android  | InputDevice / KeyEvent   | API 21          |
 | iOS      | GameController framework | iOS 14.0        |
 | macOS    | GameController framework | macOS 11.0      |
-| Windows  | XInput                   | Windows 10      |
+| Windows  | SDL3                     | Windows 10      |
 | Linux    | SDL3                     | -               |
 | Web      | W3C Gamepad API          | -               |
 
