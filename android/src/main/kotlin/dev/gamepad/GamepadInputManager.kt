@@ -224,11 +224,30 @@ class GamepadInputManager(
         }
     }
 
-    /** Returns whether the device has SOURCE_GAMEPAD or SOURCE_JOYSTICK. */
+    /** Returns whether the device is a real gamepad or joystick. */
     private fun isGamepad(device: InputDevice): Boolean {
         val sources = device.sources
-        return (sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
-                (sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
+        val hasGamepadSource = (sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+        val hasJoystickSource = (sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
+        if (!hasGamepadSource && !hasJoystickSource) return false
+
+        // Exclude touchscreen digitizers and mice that report joystick source.
+        if ((sources and InputDevice.SOURCE_TOUCHSCREEN) == InputDevice.SOURCE_TOUCHSCREEN) return false
+        if ((sources and InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE) return false
+
+        // Require at least one standard gamepad button to be present.
+        // Filters out virtual devices (e.g. "uinput-goodix") that report
+        // SOURCE_JOYSTICK but have no actual gamepad controls.
+        val hasGamepadButtons = device.hasKeys(
+            KeyEvent.KEYCODE_BUTTON_A,
+            KeyEvent.KEYCODE_BUTTON_B,
+            KeyEvent.KEYCODE_BUTTON_X,
+            KeyEvent.KEYCODE_BUTTON_Y,
+            KeyEvent.KEYCODE_BUTTON_START,
+        ).any { it }
+        if (!hasGamepadButtons) return false
+
+        return true
     }
 
     /** Builds the canonical gamepad ID string for the given Android device ID. */

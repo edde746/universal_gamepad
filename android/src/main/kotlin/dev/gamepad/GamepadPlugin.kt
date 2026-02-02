@@ -1,9 +1,11 @@
 package dev.gamepad
 
 import android.app.Activity
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.Window
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -17,9 +19,9 @@ import io.flutter.plugin.common.MethodChannel
  * Registers a [MethodChannel] (`dev.gamepad/methods`) and an
  * [EventChannel] (`dev.gamepad/events`) with the Flutter engine.
  *
- * Attaches [View.OnGenericMotionListener] and [View.OnKeyListener] on the
- * FlutterView to intercept gamepad input and forward it to Dart through
- * the [GamepadInputManager].
+ * Wraps the Activity's [Window.Callback] to intercept gamepad key events
+ * before Flutter processes them as UI navigation, and attaches a
+ * [View.OnGenericMotionListener] on the decor view for axis/trigger input.
  */
 class GamepadPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler {
 
@@ -32,8 +34,12 @@ class GamepadPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
     private var flutterPluginBinding: FlutterPlugin.FlutterPluginBinding? = null
     private var activityBinding: ActivityPluginBinding? = null
 
-    /** The view we've attached our input listeners to. */
+    /** The view we've attached our motion listener to. */
     private var attachedView: View? = null
+
+    /** The original Window.Callback we replaced, for restoration on detach. */
+    private var originalWindowCallback: Window.Callback? = null
+    private var attachedWindow: Window? = null
 
     // -- FlutterPlugin ---------------------------------------------------------
 
@@ -101,31 +107,46 @@ class GamepadPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
     // -- Input listener management ---------------------------------------------
 
     /**
-     * Attaches [View.OnGenericMotionListener] and [View.OnKeyListener] to the
-     * root content view of the activity so that gamepad events are intercepted
-     * before they reach Flutter's default handling.
+     * Attaches input listeners to the Activity:
+     * - Wraps [Window.Callback] to intercept gamepad key events (buttons, stick
+     *   clicks) before Flutter's view processes them as UI navigation.
+     * - Sets [View.OnGenericMotionListener] on the decor view for axis/trigger
+     *   motion events.
      */
     private fun attachInputListeners(activity: Activity) {
-        // Use the decor view which receives all input events.
-        val view = activity.window?.decorView ?: return
-        attachedView = view
+        val window = activity.window ?: return
+        val view = window.decorView
 
+        attachedView = view
+        attachedWindow = window
+
+        // Motion events (sticks, triggers, hat/dpad) - listener on decor view is fine.
         view.setOnGenericMotionListener { _, event ->
             inputManager?.onGenericMotionEvent(event) ?: false
         }
 
-        view.setOnKeyListener { _, _, event ->
-            inputManager?.onKeyEvent(event) ?: false
-        }
+        // Key events - wrap Window.Callback to intercept before Flutter's view
+        // consumes them as navigation actions (BUTTON_A -> Enter, etc.).
+        val original = window.callback
+        originalWindowCallback = original
+        window.callback = GamepadWindowCallback(original, inputManager)
     }
 
     /**
-     * Removes input listeners from the previously attached view.
+     * Removes input listeners and restores the original Window.Callback.
      */
     private fun detachInputListeners() {
         attachedView?.setOnGenericMotionListener(null)
-        attachedView?.setOnKeyListener(null)
         attachedView = null
+
+        // Restore original Window.Callback only if ours is still installed.
+        val window = attachedWindow
+        val original = originalWindowCallback
+        if (window != null && original != null && window.callback is GamepadWindowCallback) {
+            window.callback = original
+        }
+        originalWindowCallback = null
+        attachedWindow = null
     }
 
     /**
@@ -144,5 +165,32 @@ class GamepadPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         eventChannel = null
 
         streamHandler = null
+    }
+}
+
+/**
+ * Wraps the Activity's [Window.Callback] to intercept gamepad key events
+ * before they reach Flutter's view hierarchy.
+ *
+ * Without this, gamepad face buttons (A/B/X/Y) and stick clicks are processed
+ * by Flutter as navigation keys (Enter, etc.) and never reach the plugin's
+ * event stream.
+ */
+private class GamepadWindowCallback(
+    private val original: Window.Callback,
+    private val inputManager: GamepadInputManager?,
+) : Window.Callback by original {
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (isGamepadKeyEvent(event)) {
+            if (inputManager?.onKeyEvent(event) == true) return true
+        }
+        return original.dispatchKeyEvent(event)
+    }
+
+    private fun isGamepadKeyEvent(event: KeyEvent): Boolean {
+        val source = event.source
+        return (source and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+                (source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
     }
 }

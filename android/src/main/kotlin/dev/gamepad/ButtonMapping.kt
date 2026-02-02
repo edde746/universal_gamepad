@@ -61,8 +61,11 @@ object ButtonMapping {
             KeyEvent.KEYCODE_BUTTON_Y -> BUTTON_Y
             KeyEvent.KEYCODE_BUTTON_L1 -> LEFT_SHOULDER
             KeyEvent.KEYCODE_BUTTON_R1 -> RIGHT_SHOULDER
-            KeyEvent.KEYCODE_BUTTON_L2 -> LEFT_TRIGGER
-            KeyEvent.KEYCODE_BUTTON_R2 -> RIGHT_TRIGGER
+            // KEYCODE_BUTTON_L2 / R2 are intentionally omitted here.
+            // Triggers are handled via the analog AXIS_LTRIGGER / AXIS_RTRIGGER
+            // path in onGenericMotionEvent, which provides the proper 0.0–1.0
+            // value.  Mapping the key event as well would cause the value to
+            // flash between 1.0 (digital) and the real analog value.
             KeyEvent.KEYCODE_BUTTON_SELECT -> BACK
             KeyEvent.KEYCODE_BUTTON_START -> START
             KeyEvent.KEYCODE_BUTTON_THUMBL -> LEFT_STICK_BUTTON
