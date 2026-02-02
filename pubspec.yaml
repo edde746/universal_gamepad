@@ -1,11 +1,11 @@
 name: gamepad
-description: Cross-platform Flutter plugin providing unified gamepad input (connect/disconnect, buttons, axes, triggers) across all 6 Flutter platforms.
-version: 0.1.0
-homepage: https://github.com/edde/gamepad
+description: Cross-platform Flutter plugin providing unified gamepad input (connect/disconnect, buttons, axes, triggers).
+version: 1.0.0
+homepage: https://github.com/edde746/gamepad
 
 environment:
   sdk: ^3.10.7
-  flutter: '>=3.3.0'
+  flutter: ">=3.3.0"
 
 dependencies:
   flutter:
