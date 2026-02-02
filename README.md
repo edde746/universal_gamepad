@@ -19,7 +19,7 @@ all six Flutter platforms.
 
 ```yaml
 dependencies:
-  universal_gamepad: ^0.1.0
+  universal_gamepad: ^1.0.0
 ```
 
 ## Quick start
