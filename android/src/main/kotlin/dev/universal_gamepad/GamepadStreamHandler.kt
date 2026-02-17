@@ -16,7 +16,7 @@ class GamepadStreamHandler : EventChannel.StreamHandler {
     private var eventSink: EventChannel.EventSink? = null
 
     /** Events received before the Dart side starts listening. */
-    private val pendingEvents = mutableListOf<HashMap<String, Any>>()
+    private val pendingEvents = mutableListOf<Any>()
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -47,13 +47,13 @@ class GamepadStreamHandler : EventChannel.StreamHandler {
     // -- Internal API ----------------------------------------------------------
 
     /**
-     * Sends a gamepad event map to Dart.
+     * Sends a gamepad event list to Dart.
      *
      * If the sink is not yet available the event is queued. Events are always
      * dispatched on the main (UI) thread to satisfy Flutter platform-channel
      * requirements.
      */
-    fun send(event: HashMap<String, Any>) {
+    fun send(event: Any) {
         synchronized(lock) {
             val sink = eventSink
             if (sink != null) {

@@ -10,18 +10,21 @@ sealed class GamepadEvent {
   });
 
   /// Identifier of the gamepad that produced this event.
-  final String gamepadId;
+  final int gamepadId;
 
   /// Timestamp of the event in milliseconds since epoch.
   final int timestamp;
 
-  /// Deserializes a [GamepadEvent] from a platform channel map.
-  factory GamepadEvent.fromMap(Map<String, dynamic> map) {
-    final type = map['type'] as String;
+  /// Deserializes a [GamepadEvent] from a fixed-position list.
+  ///
+  /// Wire format — element 0 is the type tag (int):
+  ///   0 = connection, 1 = button, 2 = axis.
+  factory GamepadEvent.fromList(List list) {
+    final type = list[0] as int;
     return switch (type) {
-      'connection' => GamepadConnectionEvent.fromMap(map),
-      'button' => GamepadButtonEvent.fromMap(map),
-      'axis' => GamepadAxisEvent.fromMap(map),
+      0 => GamepadConnectionEvent.fromList(list),
+      1 => GamepadButtonEvent.fromList(list),
+      2 => GamepadAxisEvent.fromList(list),
       _ => throw ArgumentError('Unknown gamepad event type: $type'),
     };
   }
@@ -42,16 +45,18 @@ class GamepadConnectionEvent extends GamepadEvent {
   /// Information about the gamepad.
   final GamepadInfo info;
 
-  factory GamepadConnectionEvent.fromMap(Map<String, dynamic> map) {
+  /// Wire format: [0, gamepadId(int), timestamp, connected, name, vendorId, productId]
+  factory GamepadConnectionEvent.fromList(List list) {
+    final id = list[1] as int;
     return GamepadConnectionEvent(
-      gamepadId: map['gamepadId'] as String,
-      timestamp: map['timestamp'] as int,
-      connected: map['connected'] as bool,
+      gamepadId: id,
+      timestamp: list[2] as int,
+      connected: list[3] as bool,
       info: GamepadInfo(
-        id: map['gamepadId'] as String,
-        name: (map['name'] as String?) ?? 'Unknown',
-        vendorId: map['vendorId'] as int?,
-        productId: map['productId'] as int?,
+        id: id,
+        name: (list[4] as String?) ?? 'Unknown',
+        vendorId: list[5] as int?,
+        productId: list[6] as int?,
       ),
     );
   }
@@ -77,18 +82,19 @@ class GamepadButtonEvent extends GamepadEvent {
   /// For digital buttons, this will be 0.0 or 1.0.
   final double value;
 
-  factory GamepadButtonEvent.fromMap(Map<String, dynamic> map) {
-    final buttonIndex = map['button'] as int;
+  /// Wire format: [1, gamepadId(int), timestamp, buttonIndex, pressed, value]
+  factory GamepadButtonEvent.fromList(List list) {
+    final buttonIndex = list[3] as int;
     final button = GamepadButton.fromIndex(buttonIndex);
     if (button == null) {
       throw ArgumentError('Unknown button index: $buttonIndex');
     }
     return GamepadButtonEvent(
-      gamepadId: map['gamepadId'] as String,
-      timestamp: map['timestamp'] as int,
+      gamepadId: list[1] as int,
+      timestamp: list[2] as int,
       button: button,
-      pressed: map['pressed'] as bool,
-      value: (map['value'] as num).toDouble(),
+      pressed: list[4] as bool,
+      value: (list[5] as num).toDouble(),
     );
   }
 }
@@ -108,17 +114,18 @@ class GamepadAxisEvent extends GamepadEvent {
   /// Current axis value (-1.0 to 1.0).
   final double value;
 
-  factory GamepadAxisEvent.fromMap(Map<String, dynamic> map) {
-    final axisIndex = map['axis'] as int;
+  /// Wire format: [2, gamepadId(int), timestamp, axisIndex, value]
+  factory GamepadAxisEvent.fromList(List list) {
+    final axisIndex = list[3] as int;
     final axis = GamepadAxis.fromIndex(axisIndex);
     if (axis == null) {
       throw ArgumentError('Unknown axis index: $axisIndex');
     }
     return GamepadAxisEvent(
-      gamepadId: map['gamepadId'] as String,
-      timestamp: map['timestamp'] as int,
+      gamepadId: list[1] as int,
+      timestamp: list[2] as int,
       axis: axis,
-      value: (map['value'] as num).toDouble(),
+      value: (list[4] as num).toDouble(),
     );
   }
 }

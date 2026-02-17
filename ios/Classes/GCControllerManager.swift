@@ -1,15 +1,15 @@
 import GameController
 
 /// Manages GCController connections and input, translating events into the
-/// wire-format dictionaries expected by the Dart side.
+/// compact wire-format arrays expected by the Dart side.
 class GCControllerManager {
 
     // MARK: - Properties
 
     private let streamHandler: GamepadStreamHandler
 
-    /// Maps a GCController instance to its stable gamepad ID string.
-    private var controllerIds: [ObjectIdentifier: String] = [:]
+    /// Maps a GCController instance to its stable int gamepad ID.
+    private var controllerIds: [ObjectIdentifier: Int] = [:]
 
     /// Counter for generating unique IDs.
     private var nextId: Int = 0
@@ -110,21 +110,16 @@ class GCControllerManager {
         // Register input handlers for the extended gamepad profile.
         registerInputHandlers(for: controller, gamepadId: gamepadId)
 
-        var event: [String: Any] = [
-            "type": "connection",
-            "gamepadId": gamepadId,
-            "timestamp": currentTimestamp(),
-            "connected": true,
-            "name": controllerName(controller),
+        // Wire format: [0, gamepadId, timestamp, connected, name, vendorId, productId]
+        let event: [Any] = [
+            0,
+            gamepadId,
+            currentTimestamp(),
+            true,
+            controllerName(controller),
+            vendorId(for: controller) as Any,
+            productId(for: controller) as Any,
         ]
-
-        if let vid = vendorId(for: controller) {
-            event["vendorId"] = vid
-        }
-        if let pid = productId(for: controller) {
-            event["productId"] = pid
-        }
-
         streamHandler.send(event: event)
     }
 
@@ -134,20 +129,22 @@ class GCControllerManager {
 
         controller.extendedGamepad?.valueChangedHandler = nil
 
-        let event: [String: Any] = [
-            "type": "connection",
-            "gamepadId": gamepadId,
-            "timestamp": currentTimestamp(),
-            "connected": false,
-            "name": controllerName(controller),
+        // Wire format: [0, gamepadId, timestamp, connected, name, vendorId, productId]
+        let event: [Any] = [
+            0,
+            gamepadId,
+            currentTimestamp(),
+            false,
+            controllerName(controller),
+            vendorId(for: controller) as Any,
+            productId(for: controller) as Any,
         ]
-
         streamHandler.send(event: event)
     }
 
     // MARK: - Input handlers
 
-    private func registerInputHandlers(for controller: GCController, gamepadId: String) {
+    private func registerInputHandlers(for controller: GCController, gamepadId: Int) {
         guard let extendedGamepad = controller.extendedGamepad else { return }
 
         extendedGamepad.valueChangedHandler = { [weak self] (gamepad, element) in
@@ -158,7 +155,7 @@ class GCControllerManager {
 
     private func handleValueChanged(gamepad: GCExtendedGamepad,
                                     element: GCControllerElement,
-                                    gamepadId: String) {
+                                    gamepadId: Int) {
         let timestamp = currentTimestamp()
 
         // D-pad fires as a single GCControllerDirectionPad element, not as
@@ -190,38 +187,25 @@ class GCControllerManager {
         // Check axes (may produce multiple events when a full thumbstick fires).
         let axisEvents = ButtonMapping.axisIndices(for: element, in: gamepad)
         for (index, axisValue) in axisEvents {
-            let event: [String: Any] = [
-                "type": "axis",
-                "gamepadId": gamepadId,
-                "timestamp": timestamp,
-                "axis": index,
-                "value": axisValue,
-            ]
-            streamHandler.send(event: event)
+            // Wire format: [2, gamepadId, timestamp, axisIndex, value]
+            streamHandler.send(event: [2, gamepadId, timestamp, index, axisValue])
         }
     }
 
-    private func sendButtonEvent(gamepadId: String, index: Int,
+    private func sendButtonEvent(gamepadId: Int, index: Int,
                                  pressed: Bool, value: Double, timestamp: Int) {
-        let event: [String: Any] = [
-            "type": "button",
-            "gamepadId": gamepadId,
-            "timestamp": timestamp,
-            "button": index,
-            "pressed": pressed,
-            "value": value,
-        ]
-        streamHandler.send(event: event)
+        // Wire format: [1, gamepadId, timestamp, buttonIndex, pressed, value]
+        streamHandler.send(event: [1, gamepadId, timestamp, index, pressed, value])
     }
 
     // MARK: - Helpers
 
-    private func assignId(for controller: GCController) -> String {
+    private func assignId(for controller: GCController) -> Int {
         let key = ObjectIdentifier(controller)
         if let existing = controllerIds[key] {
             return existing
         }
-        let id = "ios_\(nextId)"
+        let id = nextId
         nextId += 1
         controllerIds[key] = id
         return id

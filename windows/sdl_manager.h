@@ -70,9 +70,6 @@ class SdlManager {
   void HandleAxisEvent(SDL_JoystickID joystick_id, uint8_t axis,
                        int16_t value);
 
-  /// Returns a gamepad ID string from a joystick ID (e.g. "win_3").
-  static std::string MakeGamepadId(SDL_JoystickID id);
-
   /// Returns the current timestamp in milliseconds since epoch.
   static int64_t CurrentTimestamp();
 

@@ -101,21 +101,13 @@ void EvdevManager::Stop() {
 }
 
 FlValue* EvdevManager::ListGamepads() {
-  // Called from main thread. devices_ is not mutated after Start() returns
-  // except from the worker thread, which only adds/removes between loop
-  // iterations.  ListGamepads is called from a method-channel handler which
-  // also runs between main-loop iterations, so there is no data race on the
-  // device metadata (id, name, vendor_id, product_id are set once in
-  // AddDevice and never modified).  We do need the mutex for the map itself
-  // though, since the worker may be inserting/erasing.
-  // For simplicity, take the mutex.
   std::lock_guard<std::mutex> lock(mutex_);
   FlValue* list = fl_value_new_list();
 
   for (const auto& [path, info] : devices_) {
     FlValue* map = fl_value_new_map();
     fl_value_set_string_take(map, "id",
-                             fl_value_new_string(info.id.c_str()));
+                             fl_value_new_int(info.id));
     fl_value_set_string_take(map, "name",
                              fl_value_new_string(info.name.c_str()));
     fl_value_set_string_take(map, "vendorId",
@@ -134,19 +126,15 @@ void EvdevManager::EmitExistingDevices() {
 
   for (const auto& [path, info] : devices_) {
     int64_t ts = NowMillis();
-    FlValue* event = fl_value_new_map();
-    fl_value_set_string_take(event, "type",
-                             fl_value_new_string("connection"));
-    fl_value_set_string_take(event, "gamepadId",
-                             fl_value_new_string(info.id.c_str()));
-    fl_value_set_string_take(event, "timestamp", fl_value_new_int(ts));
-    fl_value_set_string_take(event, "connected", fl_value_new_bool(TRUE));
-    fl_value_set_string_take(event, "name",
-                             fl_value_new_string(info.name.c_str()));
-    fl_value_set_string_take(event, "vendorId",
-                             fl_value_new_int(info.vendor_id));
-    fl_value_set_string_take(event, "productId",
-                             fl_value_new_int(info.product_id));
+    // Wire format: [0, gamepadId, timestamp, connected, name, vendorId, productId]
+    FlValue* event = fl_value_new_list();
+    fl_value_append_take(event, fl_value_new_int(0));
+    fl_value_append_take(event, fl_value_new_int(info.id));
+    fl_value_append_take(event, fl_value_new_int(ts));
+    fl_value_append_take(event, fl_value_new_bool(TRUE));
+    fl_value_append_take(event, fl_value_new_string(info.name.c_str()));
+    fl_value_append_take(event, fl_value_new_int(info.vendor_id));
+    fl_value_append_take(event, fl_value_new_int(info.product_id));
     callback_(event);
     fl_value_unref(event);
   }
@@ -259,7 +247,7 @@ void EvdevManager::AddDevice(const char* path) {
   DeviceInfo info{};
   info.fd = fd;
   info.evdev = dev;
-  info.id = "linux_" + std::to_string(next_id_++);
+  info.id = next_id_++;
 
   const char* name = libevdev_get_name(dev);
   info.name = name ? name : "Unknown Gamepad";
@@ -340,19 +328,15 @@ void EvdevManager::AddDevice(const char* path) {
 
   // Build connection event before inserting (we need the info fields).
   int64_t ts = NowMillis();
-  FlValue* event = fl_value_new_map();
-  fl_value_set_string_take(event, "type",
-                           fl_value_new_string("connection"));
-  fl_value_set_string_take(event, "gamepadId",
-                           fl_value_new_string(info.id.c_str()));
-  fl_value_set_string_take(event, "timestamp", fl_value_new_int(ts));
-  fl_value_set_string_take(event, "connected", fl_value_new_bool(TRUE));
-  fl_value_set_string_take(event, "name",
-                           fl_value_new_string(info.name.c_str()));
-  fl_value_set_string_take(event, "vendorId",
-                           fl_value_new_int(info.vendor_id));
-  fl_value_set_string_take(event, "productId",
-                           fl_value_new_int(info.product_id));
+  // Wire format: [0, gamepadId, timestamp, connected, name, vendorId, productId]
+  FlValue* event = fl_value_new_list();
+  fl_value_append_take(event, fl_value_new_int(0));
+  fl_value_append_take(event, fl_value_new_int(info.id));
+  fl_value_append_take(event, fl_value_new_int(ts));
+  fl_value_append_take(event, fl_value_new_bool(TRUE));
+  fl_value_append_take(event, fl_value_new_string(info.name.c_str()));
+  fl_value_append_take(event, fl_value_new_int(info.vendor_id));
+  fl_value_append_take(event, fl_value_new_int(info.product_id));
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -381,19 +365,15 @@ void EvdevManager::RemoveDevice(const char* path) {
   close(info.fd);
 
   int64_t ts = NowMillis();
-  FlValue* event = fl_value_new_map();
-  fl_value_set_string_take(event, "type",
-                           fl_value_new_string("connection"));
-  fl_value_set_string_take(event, "gamepadId",
-                           fl_value_new_string(info.id.c_str()));
-  fl_value_set_string_take(event, "timestamp", fl_value_new_int(ts));
-  fl_value_set_string_take(event, "connected", fl_value_new_bool(FALSE));
-  fl_value_set_string_take(event, "name",
-                           fl_value_new_string(info.name.c_str()));
-  fl_value_set_string_take(event, "vendorId",
-                           fl_value_new_int(info.vendor_id));
-  fl_value_set_string_take(event, "productId",
-                           fl_value_new_int(info.product_id));
+  // Wire format: [0, gamepadId, timestamp, connected, name, vendorId, productId]
+  FlValue* event = fl_value_new_list();
+  fl_value_append_take(event, fl_value_new_int(0));
+  fl_value_append_take(event, fl_value_new_int(info.id));
+  fl_value_append_take(event, fl_value_new_int(ts));
+  fl_value_append_take(event, fl_value_new_bool(FALSE));
+  fl_value_append_take(event, fl_value_new_string(info.name.c_str()));
+  fl_value_append_take(event, fl_value_new_int(info.vendor_id));
+  fl_value_append_take(event, fl_value_new_int(info.product_id));
 
   ForwardEvent(event);
   fl_value_unref(event);
@@ -415,99 +395,70 @@ void EvdevManager::OnInput(DeviceInfo& info) {
 
       bool pressed = ev.value != 0;
       int64_t ts = NowMillis();
-      FlValue* fe = fl_value_new_map();
-      fl_value_set_string_take(fe, "type", fl_value_new_string("button"));
-      fl_value_set_string_take(fe, "gamepadId",
-                               fl_value_new_string(info.id.c_str()));
-      fl_value_set_string_take(fe, "timestamp", fl_value_new_int(ts));
-      fl_value_set_string_take(fe, "button", fl_value_new_int(w3c_index));
-      fl_value_set_string_take(fe, "pressed",
-                               fl_value_new_bool(pressed ? TRUE : FALSE));
-      fl_value_set_string_take(fe, "value",
-                               fl_value_new_float(pressed ? 1.0 : 0.0));
+      // Wire format: [1, gamepadId, timestamp, buttonIndex, pressed, value]
+      FlValue* fe = fl_value_new_list();
+      fl_value_append_take(fe, fl_value_new_int(1));
+      fl_value_append_take(fe, fl_value_new_int(info.id));
+      fl_value_append_take(fe, fl_value_new_int(ts));
+      fl_value_append_take(fe, fl_value_new_int(w3c_index));
+      fl_value_append_take(fe, fl_value_new_bool(pressed ? TRUE : FALSE));
+      fl_value_append_take(fe, fl_value_new_float(pressed ? 1.0 : 0.0));
       ForwardEvent(fe);
       fl_value_unref(fe);
 
     } else if (ev.type == EV_ABS) {
       if (ButtonMapping::IsHatAxis(ev.code)) {
         int64_t ts = NowMillis();
-        const std::string& gid = info.id;
+        int gid = info.id;
 
         if (ev.code == ABS_HAT0X) {
           {
-            FlValue* fe = fl_value_new_map();
-            fl_value_set_string_take(fe, "type",
-                                     fl_value_new_string("button"));
-            fl_value_set_string_take(
-                fe, "gamepadId", fl_value_new_string(gid.c_str()));
-            fl_value_set_string_take(fe, "timestamp", fl_value_new_int(ts));
-            fl_value_set_string_take(
-                fe, "button",
-                fl_value_new_int(ButtonMapping::kDpadLeft));
+            // Wire format: [1, gamepadId, timestamp, buttonIndex, pressed, value]
+            FlValue* fe = fl_value_new_list();
+            fl_value_append_take(fe, fl_value_new_int(1));
+            fl_value_append_take(fe, fl_value_new_int(gid));
+            fl_value_append_take(fe, fl_value_new_int(ts));
+            fl_value_append_take(fe, fl_value_new_int(ButtonMapping::kDpadLeft));
             bool pressed = ev.value < 0;
-            fl_value_set_string_take(
-                fe, "pressed",
-                fl_value_new_bool(pressed ? TRUE : FALSE));
-            fl_value_set_string_take(
-                fe, "value", fl_value_new_float(pressed ? 1.0 : 0.0));
+            fl_value_append_take(fe, fl_value_new_bool(pressed ? TRUE : FALSE));
+            fl_value_append_take(fe, fl_value_new_float(pressed ? 1.0 : 0.0));
             ForwardEvent(fe);
             fl_value_unref(fe);
           }
           {
-            FlValue* fe = fl_value_new_map();
-            fl_value_set_string_take(fe, "type",
-                                     fl_value_new_string("button"));
-            fl_value_set_string_take(
-                fe, "gamepadId", fl_value_new_string(gid.c_str()));
-            fl_value_set_string_take(fe, "timestamp", fl_value_new_int(ts));
-            fl_value_set_string_take(
-                fe, "button",
-                fl_value_new_int(ButtonMapping::kDpadRight));
+            FlValue* fe = fl_value_new_list();
+            fl_value_append_take(fe, fl_value_new_int(1));
+            fl_value_append_take(fe, fl_value_new_int(gid));
+            fl_value_append_take(fe, fl_value_new_int(ts));
+            fl_value_append_take(fe, fl_value_new_int(ButtonMapping::kDpadRight));
             bool pressed = ev.value > 0;
-            fl_value_set_string_take(
-                fe, "pressed",
-                fl_value_new_bool(pressed ? TRUE : FALSE));
-            fl_value_set_string_take(
-                fe, "value", fl_value_new_float(pressed ? 1.0 : 0.0));
+            fl_value_append_take(fe, fl_value_new_bool(pressed ? TRUE : FALSE));
+            fl_value_append_take(fe, fl_value_new_float(pressed ? 1.0 : 0.0));
             ForwardEvent(fe);
             fl_value_unref(fe);
           }
         } else if (ev.code == ABS_HAT0Y) {
           {
-            FlValue* fe = fl_value_new_map();
-            fl_value_set_string_take(fe, "type",
-                                     fl_value_new_string("button"));
-            fl_value_set_string_take(
-                fe, "gamepadId", fl_value_new_string(gid.c_str()));
-            fl_value_set_string_take(fe, "timestamp", fl_value_new_int(ts));
-            fl_value_set_string_take(
-                fe, "button",
-                fl_value_new_int(ButtonMapping::kDpadUp));
+            FlValue* fe = fl_value_new_list();
+            fl_value_append_take(fe, fl_value_new_int(1));
+            fl_value_append_take(fe, fl_value_new_int(gid));
+            fl_value_append_take(fe, fl_value_new_int(ts));
+            fl_value_append_take(fe, fl_value_new_int(ButtonMapping::kDpadUp));
             bool pressed = ev.value < 0;
-            fl_value_set_string_take(
-                fe, "pressed",
-                fl_value_new_bool(pressed ? TRUE : FALSE));
-            fl_value_set_string_take(
-                fe, "value", fl_value_new_float(pressed ? 1.0 : 0.0));
+            fl_value_append_take(fe, fl_value_new_bool(pressed ? TRUE : FALSE));
+            fl_value_append_take(fe, fl_value_new_float(pressed ? 1.0 : 0.0));
             ForwardEvent(fe);
             fl_value_unref(fe);
           }
           {
-            FlValue* fe = fl_value_new_map();
-            fl_value_set_string_take(fe, "type",
-                                     fl_value_new_string("button"));
-            fl_value_set_string_take(
-                fe, "gamepadId", fl_value_new_string(gid.c_str()));
-            fl_value_set_string_take(fe, "timestamp", fl_value_new_int(ts));
-            fl_value_set_string_take(
-                fe, "button",
-                fl_value_new_int(ButtonMapping::kDpadDown));
+            FlValue* fe = fl_value_new_list();
+            fl_value_append_take(fe, fl_value_new_int(1));
+            fl_value_append_take(fe, fl_value_new_int(gid));
+            fl_value_append_take(fe, fl_value_new_int(ts));
+            fl_value_append_take(fe, fl_value_new_int(ButtonMapping::kDpadDown));
             bool pressed = ev.value > 0;
-            fl_value_set_string_take(
-                fe, "pressed",
-                fl_value_new_bool(pressed ? TRUE : FALSE));
-            fl_value_set_string_take(
-                fe, "value", fl_value_new_float(pressed ? 1.0 : 0.0));
+            fl_value_append_take(fe, fl_value_new_bool(pressed ? TRUE : FALSE));
+            fl_value_append_take(fe, fl_value_new_float(pressed ? 1.0 : 0.0));
             ForwardEvent(fe);
             fl_value_unref(fe);
           }
@@ -533,16 +484,14 @@ void EvdevManager::OnInput(DeviceInfo& info) {
 
         bool pressed = value > 0.5;
         int64_t ts = NowMillis();
-        FlValue* fe = fl_value_new_map();
-        fl_value_set_string_take(fe, "type", fl_value_new_string("button"));
-        fl_value_set_string_take(fe, "gamepadId",
-                                 fl_value_new_string(info.id.c_str()));
-        fl_value_set_string_take(fe, "timestamp", fl_value_new_int(ts));
-        fl_value_set_string_take(fe, "button",
-                                 fl_value_new_int(button_index));
-        fl_value_set_string_take(fe, "pressed",
-                                 fl_value_new_bool(pressed ? TRUE : FALSE));
-        fl_value_set_string_take(fe, "value", fl_value_new_float(value));
+        // Wire format: [1, gamepadId, timestamp, buttonIndex, pressed, value]
+        FlValue* fe = fl_value_new_list();
+        fl_value_append_take(fe, fl_value_new_int(1));
+        fl_value_append_take(fe, fl_value_new_int(info.id));
+        fl_value_append_take(fe, fl_value_new_int(ts));
+        fl_value_append_take(fe, fl_value_new_int(button_index));
+        fl_value_append_take(fe, fl_value_new_bool(pressed ? TRUE : FALSE));
+        fl_value_append_take(fe, fl_value_new_float(value));
         ForwardEvent(fe);
         fl_value_unref(fe);
 
@@ -565,13 +514,13 @@ void EvdevManager::OnInput(DeviceInfo& info) {
         if (w3c_index < 4) info.last_axis[w3c_index] = value;
 
         int64_t ts = NowMillis();
-        FlValue* fe = fl_value_new_map();
-        fl_value_set_string_take(fe, "type", fl_value_new_string("axis"));
-        fl_value_set_string_take(fe, "gamepadId",
-                                 fl_value_new_string(info.id.c_str()));
-        fl_value_set_string_take(fe, "timestamp", fl_value_new_int(ts));
-        fl_value_set_string_take(fe, "axis", fl_value_new_int(w3c_index));
-        fl_value_set_string_take(fe, "value", fl_value_new_float(value));
+        // Wire format: [2, gamepadId, timestamp, axisIndex, value]
+        FlValue* fe = fl_value_new_list();
+        fl_value_append_take(fe, fl_value_new_int(2));
+        fl_value_append_take(fe, fl_value_new_int(info.id));
+        fl_value_append_take(fe, fl_value_new_int(ts));
+        fl_value_append_take(fe, fl_value_new_int(w3c_index));
+        fl_value_append_take(fe, fl_value_new_float(value));
         ForwardEvent(fe);
         fl_value_unref(fe);
       }

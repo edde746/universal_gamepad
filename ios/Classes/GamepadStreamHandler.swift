@@ -10,7 +10,7 @@ public class GamepadStreamHandler: NSObject, FlutterStreamHandler {
     private var eventSink: FlutterEventSink?
 
     /// Events received before the Dart side starts listening.
-    private var pendingEvents: [[String: Any]] = []
+    private var pendingEvents: [[Any]] = []
 
     /// Thread-safety lock for sink / queue access.
     private let lock = NSLock()
@@ -42,10 +42,10 @@ public class GamepadStreamHandler: NSObject, FlutterStreamHandler {
 
     // MARK: - Internal API
 
-    /// Sends a gamepad event dictionary to Dart.
+    /// Sends a gamepad event array to Dart.
     ///
     /// If the sink is not yet available the event is queued.
-    func send(event: [String: Any]) {
+    func send(event: [Any]) {
         lock.lock()
         if let sink = eventSink {
             lock.unlock()

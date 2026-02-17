@@ -38,7 +38,7 @@ class EvdevManager {
   struct DeviceInfo {
     int fd;
     struct libevdev* evdev;
-    std::string id;
+    int id;
     std::string name;
     uint16_t vendor_id;
     uint16_t product_id;

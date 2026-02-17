@@ -35,8 +35,8 @@ class _GamepadDemoPageState extends State<GamepadDemoPage> {
   final _gamepads = Gamepad.instance;
   StreamSubscription<GamepadEvent>? _subscription;
 
-  final Map<String, GamepadInfo> _connectedGamepads = {};
-  String? _selectedGamepadId;
+  final Map<int, GamepadInfo> _connectedGamepads = {};
+  int? _selectedGamepadId;
 
   // Button states: button index -> value (0.0-1.0)
   final Map<int, double> _buttonStates = {};
@@ -128,7 +128,7 @@ class _GamepadDemoPageState extends State<GamepadDemoPage> {
         title: const Text('Gamepad Demo'),
         actions: [
           if (_connectedGamepads.length > 1)
-            DropdownButton<String>(
+            DropdownButton<int>(
               value: _selectedGamepadId,
               items: _connectedGamepads.entries
                   .map((e) => DropdownMenuItem(

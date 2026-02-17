@@ -5,6 +5,8 @@ import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 import 'package:web/web.dart' as web;
 
 import 'platform_interface.dart';
+import 'types/gamepad_axis.dart';
+import 'types/gamepad_button.dart';
 import 'types/gamepad_event.dart';
 import 'types/gamepad_info.dart';
 
@@ -40,7 +42,7 @@ class WebGamepad extends GamepadPlatform {
       if (gp == null) continue;
       final gamepad = gp;
       result.add(GamepadInfo(
-        id: 'web_${gamepad.index}',
+        id: gamepad.index,
         name: gamepad.id,
       ));
     }
@@ -60,11 +62,11 @@ class WebGamepad extends GamepadPlatform {
       final gamepad = ge.gamepad;
       final now = DateTime.now().millisecondsSinceEpoch;
       _controller?.add(GamepadConnectionEvent(
-        gamepadId: 'web_${gamepad.index}',
+        gamepadId: gamepad.index,
         timestamp: now,
         connected: true,
         info: GamepadInfo(
-          id: 'web_${gamepad.index}',
+          id: gamepad.index,
           name: gamepad.id,
         ),
       ));
@@ -76,11 +78,11 @@ class WebGamepad extends GamepadPlatform {
       final now = DateTime.now().millisecondsSinceEpoch;
       _previousStates.remove(gamepad.index);
       _controller?.add(GamepadConnectionEvent(
-        gamepadId: 'web_${gamepad.index}',
+        gamepadId: gamepad.index,
         timestamp: now,
         connected: false,
         info: GamepadInfo(
-          id: 'web_${gamepad.index}',
+          id: gamepad.index,
           name: gamepad.id,
         ),
       ));
@@ -121,7 +123,6 @@ class WebGamepad extends GamepadPlatform {
       if (gp == null) continue;
       final gamepad = gp;
       final id = gamepad.index;
-      final gamepadId = 'web_$id';
 
       final buttons = gamepad.buttons.toDart;
       final axes = gamepad.axes.toDart;
@@ -137,14 +138,16 @@ class WebGamepad extends GamepadPlatform {
         final prevValue = prev?.buttonValues[i] ?? 0.0;
 
         if (pressed != prevPressed || (value - prevValue).abs() > 0.01) {
-          _controller?.add(GamepadButtonEvent.fromMap({
-            'type': 'button',
-            'gamepadId': gamepadId,
-            'timestamp': now,
-            'button': i,
-            'pressed': pressed,
-            'value': value,
-          }));
+          final b = GamepadButton.fromIndex(i);
+          if (b != null) {
+            _controller?.add(GamepadButtonEvent(
+              gamepadId: id,
+              timestamp: now,
+              button: b,
+              pressed: pressed,
+              value: value,
+            ));
+          }
         }
       }
 
@@ -154,13 +157,15 @@ class WebGamepad extends GamepadPlatform {
         final prevValue = prev?.axisValues[i] ?? 0.0;
 
         if ((value - prevValue).abs() > 0.01) {
-          _controller?.add(GamepadAxisEvent.fromMap({
-            'type': 'axis',
-            'gamepadId': gamepadId,
-            'timestamp': now,
-            'axis': i,
-            'value': value,
-          }));
+          final a = GamepadAxis.fromIndex(i);
+          if (a != null) {
+            _controller?.add(GamepadAxisEvent(
+              gamepadId: id,
+              timestamp: now,
+              axis: a,
+              value: value,
+            ));
+          }
         }
       }
 

@@ -16,8 +16,7 @@ class MethodChannelGamepad extends GamepadPlatform {
   @override
   Stream<GamepadEvent> get events {
     _events ??= _eventChannel.receiveBroadcastStream().map((dynamic event) {
-      final map = Map<String, dynamic>.from(event as Map);
-      return GamepadEvent.fromMap(map);
+      return GamepadEvent.fromList(event as List);
     });
     return _events!;
   }

@@ -8,7 +8,7 @@ class GamepadInfo {
   });
 
   /// Unique identifier for this gamepad within the current session.
-  final String id;
+  final int id;
 
   /// Human-readable name of the gamepad (e.g. "Xbox Wireless Controller").
   final String name;
@@ -21,7 +21,7 @@ class GamepadInfo {
 
   factory GamepadInfo.fromMap(Map<String, dynamic> map) {
     return GamepadInfo(
-      id: map['id'] as String,
+      id: map['id'] as int,
       name: map['name'] as String,
       vendorId: map['vendorId'] as int?,
       productId: map['productId'] as int?,

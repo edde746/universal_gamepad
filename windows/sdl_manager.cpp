@@ -35,7 +35,7 @@ flutter::EncodableList SdlManager::ListGamepads() {
   for (const auto& [id, info] : gamepads_) {
     flutter::EncodableMap map;
     map[flutter::EncodableValue("id")] =
-        flutter::EncodableValue(MakeGamepadId(id));
+        flutter::EncodableValue(static_cast<int32_t>(id));
     map[flutter::EncodableValue("name")] =
         flutter::EncodableValue(info.name);
     map[flutter::EncodableValue("vendorId")] =
@@ -121,22 +121,15 @@ void SdlManager::HandleGamepadAdded(SDL_JoystickID joystick_id) {
     gamepads_[joystick_id] = info;
   }
 
-  // Emit connection event.
-  flutter::EncodableMap event;
-  event[flutter::EncodableValue("type")] =
-      flutter::EncodableValue(std::string("connection"));
-  event[flutter::EncodableValue("gamepadId")] =
-      flutter::EncodableValue(MakeGamepadId(joystick_id));
-  event[flutter::EncodableValue("timestamp")] =
-      flutter::EncodableValue(CurrentTimestamp());
-  event[flutter::EncodableValue("connected")] =
-      flutter::EncodableValue(true);
-  event[flutter::EncodableValue("name")] =
-      flutter::EncodableValue(info.name);
-  event[flutter::EncodableValue("vendorId")] =
-      flutter::EncodableValue(static_cast<int32_t>(info.vendor_id));
-  event[flutter::EncodableValue("productId")] =
-      flutter::EncodableValue(static_cast<int32_t>(info.product_id));
+  // Wire format: [0, gamepadId, timestamp, connected, name, vendorId, productId]
+  flutter::EncodableList event;
+  event.push_back(flutter::EncodableValue(0));
+  event.push_back(flutter::EncodableValue(static_cast<int32_t>(joystick_id)));
+  event.push_back(flutter::EncodableValue(CurrentTimestamp()));
+  event.push_back(flutter::EncodableValue(true));
+  event.push_back(flutter::EncodableValue(info.name));
+  event.push_back(flutter::EncodableValue(static_cast<int32_t>(info.vendor_id)));
+  event.push_back(flutter::EncodableValue(static_cast<int32_t>(info.product_id)));
 
   stream_handler_->SendEvent(flutter::EncodableValue(event));
 }
@@ -156,22 +149,15 @@ void SdlManager::HandleGamepadRemoved(SDL_JoystickID joystick_id) {
     gamepads_.erase(it);
   }
 
-  // Emit disconnection event.
-  flutter::EncodableMap event;
-  event[flutter::EncodableValue("type")] =
-      flutter::EncodableValue(std::string("connection"));
-  event[flutter::EncodableValue("gamepadId")] =
-      flutter::EncodableValue(MakeGamepadId(joystick_id));
-  event[flutter::EncodableValue("timestamp")] =
-      flutter::EncodableValue(CurrentTimestamp());
-  event[flutter::EncodableValue("connected")] =
-      flutter::EncodableValue(false);
-  event[flutter::EncodableValue("name")] =
-      flutter::EncodableValue(info.name);
-  event[flutter::EncodableValue("vendorId")] =
-      flutter::EncodableValue(static_cast<int32_t>(info.vendor_id));
-  event[flutter::EncodableValue("productId")] =
-      flutter::EncodableValue(static_cast<int32_t>(info.product_id));
+  // Wire format: [0, gamepadId, timestamp, connected, name, vendorId, productId]
+  flutter::EncodableList event;
+  event.push_back(flutter::EncodableValue(0));
+  event.push_back(flutter::EncodableValue(static_cast<int32_t>(joystick_id)));
+  event.push_back(flutter::EncodableValue(CurrentTimestamp()));
+  event.push_back(flutter::EncodableValue(false));
+  event.push_back(flutter::EncodableValue(info.name));
+  event.push_back(flutter::EncodableValue(static_cast<int32_t>(info.vendor_id)));
+  event.push_back(flutter::EncodableValue(static_cast<int32_t>(info.product_id)));
 
   stream_handler_->SendEvent(flutter::EncodableValue(event));
 }
@@ -190,19 +176,14 @@ void SdlManager::HandleButtonEvent(SDL_JoystickID joystick_id, uint8_t button,
     return;
   }
 
-  flutter::EncodableMap event;
-  event[flutter::EncodableValue("type")] =
-      flutter::EncodableValue(std::string("button"));
-  event[flutter::EncodableValue("gamepadId")] =
-      flutter::EncodableValue(MakeGamepadId(joystick_id));
-  event[flutter::EncodableValue("timestamp")] =
-      flutter::EncodableValue(CurrentTimestamp());
-  event[flutter::EncodableValue("button")] =
-      flutter::EncodableValue(static_cast<int32_t>(w3c_index));
-  event[flutter::EncodableValue("pressed")] =
-      flutter::EncodableValue(pressed);
-  event[flutter::EncodableValue("value")] =
-      flutter::EncodableValue(pressed ? 1.0 : 0.0);
+  // Wire format: [1, gamepadId, timestamp, buttonIndex, pressed, value]
+  flutter::EncodableList event;
+  event.push_back(flutter::EncodableValue(1));
+  event.push_back(flutter::EncodableValue(static_cast<int32_t>(joystick_id)));
+  event.push_back(flutter::EncodableValue(CurrentTimestamp()));
+  event.push_back(flutter::EncodableValue(static_cast<int32_t>(w3c_index)));
+  event.push_back(flutter::EncodableValue(pressed));
+  event.push_back(flutter::EncodableValue(pressed ? 1.0 : 0.0));
 
   stream_handler_->SendEvent(flutter::EncodableValue(event));
 }
@@ -228,19 +209,14 @@ void SdlManager::HandleAxisEvent(SDL_JoystickID joystick_id, uint8_t axis,
     double normalized = NormalizeTriggerAxis(value);
     bool pressed = normalized > 0.5;
 
-    flutter::EncodableMap event;
-    event[flutter::EncodableValue("type")] =
-        flutter::EncodableValue(std::string("button"));
-    event[flutter::EncodableValue("gamepadId")] =
-        flutter::EncodableValue(MakeGamepadId(joystick_id));
-    event[flutter::EncodableValue("timestamp")] =
-        flutter::EncodableValue(CurrentTimestamp());
-    event[flutter::EncodableValue("button")] =
-        flutter::EncodableValue(static_cast<int32_t>(button_index));
-    event[flutter::EncodableValue("pressed")] =
-        flutter::EncodableValue(pressed);
-    event[flutter::EncodableValue("value")] =
-        flutter::EncodableValue(normalized);
+    // Wire format: [1, gamepadId, timestamp, buttonIndex, pressed, value]
+    flutter::EncodableList event;
+    event.push_back(flutter::EncodableValue(1));
+    event.push_back(flutter::EncodableValue(static_cast<int32_t>(joystick_id)));
+    event.push_back(flutter::EncodableValue(CurrentTimestamp()));
+    event.push_back(flutter::EncodableValue(static_cast<int32_t>(button_index)));
+    event.push_back(flutter::EncodableValue(pressed));
+    event.push_back(flutter::EncodableValue(normalized));
 
     stream_handler_->SendEvent(flutter::EncodableValue(event));
     return;
@@ -254,23 +230,15 @@ void SdlManager::HandleAxisEvent(SDL_JoystickID joystick_id, uint8_t axis,
 
   double normalized = NormalizeStickAxis(value);
 
-  flutter::EncodableMap event;
-  event[flutter::EncodableValue("type")] =
-      flutter::EncodableValue(std::string("axis"));
-  event[flutter::EncodableValue("gamepadId")] =
-      flutter::EncodableValue(MakeGamepadId(joystick_id));
-  event[flutter::EncodableValue("timestamp")] =
-      flutter::EncodableValue(CurrentTimestamp());
-  event[flutter::EncodableValue("axis")] =
-      flutter::EncodableValue(static_cast<int32_t>(w3c_index));
-  event[flutter::EncodableValue("value")] =
-      flutter::EncodableValue(normalized);
+  // Wire format: [2, gamepadId, timestamp, axisIndex, value]
+  flutter::EncodableList event;
+  event.push_back(flutter::EncodableValue(2));
+  event.push_back(flutter::EncodableValue(static_cast<int32_t>(joystick_id)));
+  event.push_back(flutter::EncodableValue(CurrentTimestamp()));
+  event.push_back(flutter::EncodableValue(static_cast<int32_t>(w3c_index)));
+  event.push_back(flutter::EncodableValue(normalized));
 
   stream_handler_->SendEvent(flutter::EncodableValue(event));
-}
-
-std::string SdlManager::MakeGamepadId(SDL_JoystickID id) {
-  return "win_" + std::to_string(id);
 }
 
 int64_t SdlManager::CurrentTimestamp() {
