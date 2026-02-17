@@ -8,6 +8,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <unordered_set>
 
 EvdevManager::EvdevManager() = default;
 
@@ -51,6 +52,13 @@ void EvdevManager::Start(EventCallback callback) {
   }
 
   g_main_context_pop_thread_default(worker_context_);
+
+  // Periodic timer on the main thread drains queued events.
+  // No cross-thread g_idle_add / g_main_context_wakeup — the worker just
+  // pushes to the queue and this timer picks them up at ~60 Hz.
+  drain_timer_ = g_timeout_source_new(16);
+  g_source_set_callback(drain_timer_, DrainEvents, this, nullptr);
+  g_source_attach(drain_timer_, nullptr);  // default (main) context
 
   // Start the worker thread — it will run worker_loop_.
   worker_thread_ = g_thread_new("evdev-worker", ThreadFunc, this);
@@ -96,13 +104,18 @@ void EvdevManager::Stop() {
     worker_context_ = nullptr;
   }
 
+  if (drain_timer_) {
+    g_source_destroy(drain_timer_);
+    g_source_unref(drain_timer_);
+    drain_timer_ = nullptr;
+  }
+
   {
     std::lock_guard<std::mutex> lock(queue_mutex_);
     for (FlValue* ev : pending_events_) {
       fl_value_unref(ev);
     }
     pending_events_.clear();
-    idle_scheduled_ = false;
   }
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -168,14 +181,8 @@ gpointer EvdevManager::ThreadFunc(gpointer user_data) {
 
 void EvdevManager::ForwardEvent(FlValue* event) {
   fl_value_ref(event);
-
   std::lock_guard<std::mutex> lock(queue_mutex_);
   pending_events_.push_back(event);
-
-  if (!idle_scheduled_) {
-    idle_scheduled_ = true;
-    g_idle_add(DrainEvents, this);
-  }
 }
 
 gboolean EvdevManager::DrainEvents(gpointer user_data) {
@@ -184,8 +191,26 @@ gboolean EvdevManager::DrainEvents(gpointer user_data) {
   std::vector<FlValue*> events;
   {
     std::lock_guard<std::mutex> lock(self->queue_mutex_);
+    if (self->pending_events_.empty()) return G_SOURCE_CONTINUE;
     events.swap(self->pending_events_);
-    self->idle_scheduled_ = false;
+  }
+
+  // Coalesce axis events: keep only the latest per (gamepadId, axisIndex).
+  // Scan in reverse so the first occurrence we see is the newest.
+  // Wire format for axis: [2, gamepadId, timestamp, axisIndex, value]
+  std::unordered_set<uint64_t> seen_axes;
+  for (int i = static_cast<int>(events.size()) - 1; i >= 0; --i) {
+    FlValue* ev = events[i];
+    if (fl_value_get_length(ev) >= 5 &&
+        fl_value_get_int(fl_value_get_list_value(ev, 0)) == 2) {
+      int64_t gid = fl_value_get_int(fl_value_get_list_value(ev, 1));
+      int64_t axis = fl_value_get_int(fl_value_get_list_value(ev, 3));
+      uint64_t key = (static_cast<uint64_t>(gid) << 8) | static_cast<uint64_t>(axis);
+      if (!seen_axes.insert(key).second) {
+        fl_value_unref(ev);
+        events[i] = nullptr;
+      }
+    }
   }
 
   EventCallback cb;
@@ -194,18 +219,13 @@ gboolean EvdevManager::DrainEvents(gpointer user_data) {
     cb = self->callback_;
   }
 
-  if (cb) {
-    for (FlValue* ev : events) {
-      cb(ev);
-      fl_value_unref(ev);
-    }
-  } else {
-    for (FlValue* ev : events) {
-      fl_value_unref(ev);
-    }
+  for (FlValue* ev : events) {
+    if (!ev) continue;
+    if (cb) cb(ev);
+    fl_value_unref(ev);
   }
 
-  return G_SOURCE_REMOVE;
+  return G_SOURCE_CONTINUE;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,7 +336,10 @@ void EvdevManager::AddDevice(const char* path) {
             auto* wd = static_cast<WatchData*>(user_data);
             auto* self = wd->self;
 
-            std::lock_guard<std::mutex> lock(self->mutex_);
+            // No mutex_ needed: all worker-thread callbacks (IO, AddDevice,
+            // RemoveDevice) are serialized by the worker GMainLoop. The main
+            // thread only reads devices_ under mutex_ in ListGamepads /
+            // EmitExistingDevices, and concurrent reads are safe.
             auto it = self->devices_.find(wd->path);
             if (it == self->devices_.end()) return G_SOURCE_REMOVE;
 

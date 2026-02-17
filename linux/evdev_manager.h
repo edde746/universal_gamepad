@@ -15,12 +15,15 @@
 /// Manages gamepad lifecycle via direct evdev on a dedicated GLib thread.
 ///
 /// Device scanning, hotplug monitoring, and event reading all happen on a
-/// private GMainLoop running in its own thread.  Finished events are
-/// forwarded to the default (main) GMainContext via g_idle_add so that
-/// FlValue/EventChannel calls stay on the main thread.
+/// private GMainLoop running in its own thread.  Finished events are queued
+/// and drained by a 16 ms periodic timer on the main GMainContext so that
+/// FlValue/EventChannel calls stay on the main thread.  No cross-thread
+/// g_idle_add / g_main_context_wakeup is used — the worker just pushes to
+/// the queue.
 ///
 /// Axis events are throttled: a new value is only forwarded when it differs
-/// from the previous value by more than kAxisEpsilon.
+/// from the previous value by more than kAxisEpsilon.  Duplicate axis events
+/// in the same drain batch are coalesced to the latest value.
 class EvdevManager {
  public:
   using EventCallback = std::function<void(FlValue* event)>;
@@ -58,11 +61,10 @@ class EvdevManager {
   void RemoveDevice(const char* path);
   void OnInput(DeviceInfo& info);
 
-  /// Queue an event for forwarding to the main thread. A single idle
-  /// callback drains the entire queue, avoiding per-event g_idle_add overhead.
+  /// Queue an event for delivery on the next timer tick.
   void ForwardEvent(FlValue* event);
 
-  /// Main-thread idle callback that drains pending_events_ in one batch.
+  /// Main-thread timer callback that drains pending_events_.
   static gboolean DrainEvents(gpointer user_data);
 
   static void OnDirectoryChanged(GFileMonitor* monitor, GFile* file,
@@ -83,11 +85,10 @@ class EvdevManager {
   std::mutex mutex_;
   EventCallback callback_;
 
-  // Event queue — protected by queue_mutex_ (separate to avoid deadlock with
-  // IO callbacks that hold mutex_ while calling ForwardEvent via OnInput).
+  // Event queue — protected by queue_mutex_.
   std::mutex queue_mutex_;
   std::vector<FlValue*> pending_events_;
-  bool idle_scheduled_ = false;
+  GSource* drain_timer_ = nullptr;
 };
 
 #endif  // EVDEV_MANAGER_H_
