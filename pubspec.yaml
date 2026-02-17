@@ -1,6 +1,6 @@
 name: universal_gamepad
 description: Cross-platform Flutter plugin providing unified gamepad input (connect/disconnect, buttons, axes, triggers).
-version: 1.2.0
+version: 1.2.1
 homepage: https://github.com/edde746/gamepad
 
 environment:
