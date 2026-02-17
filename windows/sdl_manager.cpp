@@ -3,6 +3,8 @@
 #include "gamepad_stream_handler.h"
 
 #include <chrono>
+#include <cmath>
+#include <limits>
 
 namespace gamepad {
 
@@ -115,6 +117,10 @@ void SdlManager::HandleGamepadAdded(SDL_JoystickID joystick_id) {
   info.name = name ? name : "Unknown Gamepad";
   info.vendor_id = vendor;
   info.product_id = product;
+  for (int i = 0; i < 4; i++)
+    info.last_axis[i] = std::numeric_limits<double>::quiet_NaN();
+  for (int i = 0; i < 2; i++)
+    info.last_trigger[i] = std::numeric_limits<double>::quiet_NaN();
 
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
@@ -190,14 +196,16 @@ void SdlManager::HandleButtonEvent(SDL_JoystickID joystick_id, uint8_t button,
 
 void SdlManager::HandleAxisEvent(SDL_JoystickID joystick_id, uint8_t axis,
                                  int16_t value) {
+  auto sdl_axis = static_cast<SDL_GamepadAxis>(axis);
+
+  // Look up the device info so we can access last_axis/last_trigger.
+  GamepadInfo* info_ptr = nullptr;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    if (gamepads_.find(joystick_id) == gamepads_.end()) {
-      return;
-    }
+    auto it = gamepads_.find(joystick_id);
+    if (it == gamepads_.end()) return;
+    info_ptr = &it->second;
   }
-
-  auto sdl_axis = static_cast<SDL_GamepadAxis>(axis);
 
   // Trigger axes map to analog buttons, not stick axes.
   if (IsTriggerAxis(sdl_axis)) {
@@ -206,7 +214,15 @@ void SdlManager::HandleAxisEvent(SDL_JoystickID joystick_id, uint8_t axis,
       return;
     }
 
+    int trigger_idx = (sdl_axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER) ? 0 : 1;
     double normalized = NormalizeTriggerAxis(value);
+
+    if (!std::isnan(info_ptr->last_trigger[trigger_idx]) &&
+        std::abs(normalized - info_ptr->last_trigger[trigger_idx]) < kAxisEpsilon) {
+      return;
+    }
+    info_ptr->last_trigger[trigger_idx] = normalized;
+
     bool pressed = normalized > 0.5;
 
     // Wire format: [1, gamepadId, timestamp, buttonIndex, pressed, value]
@@ -229,6 +245,12 @@ void SdlManager::HandleAxisEvent(SDL_JoystickID joystick_id, uint8_t axis,
   }
 
   double normalized = NormalizeStickAxis(value);
+
+  if (!std::isnan(info_ptr->last_axis[w3c_index]) &&
+      std::abs(normalized - info_ptr->last_axis[w3c_index]) < kAxisEpsilon) {
+    return;
+  }
+  info_ptr->last_axis[w3c_index] = normalized;
 
   // Wire format: [2, gamepadId, timestamp, axisIndex, value]
   flutter::EncodableList event;

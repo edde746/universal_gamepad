@@ -27,6 +27,9 @@ class GamepadStreamHandler;
 /// Emits events through a GamepadStreamHandler.
 class SdlManager {
  public:
+  /// Axis values that change by less than this threshold are suppressed.
+  static constexpr double kAxisEpsilon = 0.005;
+
   explicit SdlManager(std::shared_ptr<GamepadStreamHandler> stream_handler);
   ~SdlManager();
 
@@ -48,6 +51,10 @@ class SdlManager {
     std::string name;
     uint16_t vendor_id;
     uint16_t product_id;
+    /// Last emitted stick axis values for throttling (indexed by W3C axis 0-3).
+    double last_axis[4];
+    /// Last emitted trigger values for throttling (0 = L2, 1 = R2).
+    double last_trigger[2];
   };
 
   /// Main polling loop, runs on background thread.
