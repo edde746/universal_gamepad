@@ -12,49 +12,30 @@ all six Flutter platforms.
 | iOS      | GameController framework | iOS 14.0        |
 | macOS    | GameController framework | macOS 11.0      |
 | Windows  | SDL3                     | Windows 10      |
-| Linux    | libmanette               | -               |
+| Linux    | evdev (libevdev)         | -               |
 | Web      | W3C Gamepad API          | -               |
 
 ## Installation
 
 ```yaml
 dependencies:
-  universal_gamepad: ^1.2.0
+  universal_gamepad: ^1.3.0
 ```
 
 ## Linux
 
-The Linux backend uses [libmanette](https://gitlab.gnome.org/GNOME/libmanette),
-a GLib-native gamepad library. Events are delivered via GLib signals directly on
-the main loop -- no polling thread, no UI freezes.
-
-**System library (default):**
+The Linux backend reads gamepad input directly via evdev using
+[libevdev](https://www.freedesktop.org/wiki/Software/libevdev/). Hotplug is
+handled by monitoring `/dev/input/` with GLib. Events are delivered on the GLib
+main loop -- no polling thread, no UI freezes.
 
 ```sh
 # Debian/Ubuntu
-sudo apt install libmanette-0.2-dev
+sudo apt install libevdev-dev
 
 # Arch/SteamOS
-sudo pacman -S libmanette
+sudo pacman -S libevdev
 ```
-
-**Bundled from source:**
-
-If libmanette isn't available on the target system, you can bundle it statically:
-
-```sh
-flutter build linux --dart-define=BUNDLE_MANETTE=ON
-```
-
-Or pass it directly to CMake:
-
-```sh
-cmake -DBUNDLE_MANETTE=ON ...
-```
-
-This downloads libmanette 0.2.13, compiles it as a static library, and embeds
-the SDL GameControllerDB mapping database. Build dependencies: `glib-2.0`,
-`gobject-2.0`, `gio-2.0`, `libevdev`, and `glib-compile-resources`.
 
 ## Quick start
 

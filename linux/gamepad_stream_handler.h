@@ -8,8 +8,8 @@
 /// Stream handler that bridges native gamepad events to the Dart EventChannel.
 ///
 /// Wraps an FlEventChannel and registers listen/cancel callbacks. When Dart
-/// starts listening, the handler begins SDL polling via a caller-supplied
-/// callback. When Dart cancels, polling stops.
+/// starts listening, the handler notifies the caller via a callback.
+/// When Dart cancels, the caller is notified again.
 class GamepadStreamHandler {
  public:
   GamepadStreamHandler();

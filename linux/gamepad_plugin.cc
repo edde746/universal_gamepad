@@ -1,7 +1,7 @@
 #include "gamepad_plugin.h"
 
 #include "gamepad_stream_handler.h"
-#include "manette_manager.h"
+#include "evdev_manager.h"
 
 #include <cstring>
 #include <memory>
@@ -9,7 +9,7 @@
 // Plugin state, allocated once per registration and freed on teardown.
 struct GamepadPlugin {
   std::unique_ptr<GamepadStreamHandler> stream_handler;
-  std::unique_ptr<ManetteManager> manager;
+  std::unique_ptr<EvdevManager> manager;
   FlMethodChannel* method_channel;
   FlEventChannel* event_channel;
 };
@@ -73,7 +73,7 @@ void gamepad_plugin_register_with_registrar(
 
   g_plugin = new GamepadPlugin();
   g_plugin->stream_handler = std::make_unique<GamepadStreamHandler>();
-  g_plugin->manager = std::make_unique<ManetteManager>();
+  g_plugin->manager = std::make_unique<EvdevManager>();
 
   FlBinaryMessenger* messenger =
       fl_plugin_registrar_get_messenger(registrar);
@@ -94,7 +94,7 @@ void gamepad_plugin_register_with_registrar(
   // Start monitoring eagerly so that listGamepads() works before the Dart
   // event stream is subscribed to. SendEvent safely no-ops when not listening.
   GamepadStreamHandler* handler = g_plugin->stream_handler.get();
-  ManetteManager* manager = g_plugin->manager.get();
+  EvdevManager* manager = g_plugin->manager.get();
 
   manager->Start([handler](FlValue* event) {
     handler->SendEvent(event);
