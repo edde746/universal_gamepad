@@ -3,17 +3,33 @@
 #include "button_mapping.h"
 
 #include <chrono>
+#include <cmath>
+#include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <cstring>
 
 EvdevManager::EvdevManager() = default;
 
 EvdevManager::~EvdevManager() { Stop(); }
 
+// ---------------------------------------------------------------------------
+// Public API (called from main thread)
+// ---------------------------------------------------------------------------
+
 void EvdevManager::Start(EventCallback callback) {
-  callback_ = std::move(callback);
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    callback_ = std::move(callback);
+  }
+
+  // Create a private GMainContext + GMainLoop for the worker thread.
+  worker_context_ = g_main_context_new();
+  worker_loop_ = g_main_loop_new(worker_context_, FALSE);
+
+  // Push our context as the thread-default so that g_file_monitor and
+  // g_source_attach use it rather than the global default.
+  g_main_context_push_thread_default(worker_context_);
 
   ScanDevices();
 
@@ -33,10 +49,24 @@ void EvdevManager::Start(EventCallback callback) {
               error ? error->message : "unknown");
     if (error) g_error_free(error);
   }
+
+  g_main_context_pop_thread_default(worker_context_);
+
+  // Start the worker thread — it will run worker_loop_.
+  worker_thread_ = g_thread_new("evdev-worker", ThreadFunc, this);
 }
 
 void EvdevManager::Stop() {
-  // Remove directory monitor.
+  // Signal the worker loop to quit.
+  if (worker_loop_) {
+    g_main_loop_quit(worker_loop_);
+  }
+  if (worker_thread_) {
+    g_thread_join(worker_thread_);
+    worker_thread_ = nullptr;
+  }
+
+  // Now single-threaded — safe to clean up without locks.
   if (dir_monitor_) {
     if (dir_monitor_signal_id_) {
       g_signal_handler_disconnect(dir_monitor_, dir_monitor_signal_id_);
@@ -47,20 +77,39 @@ void EvdevManager::Stop() {
     dir_monitor_ = nullptr;
   }
 
-  // Close all devices.
   for (auto& [path, info] : devices_) {
-    if (info.io_watch_id) {
-      g_source_remove(info.io_watch_id);
+    if (info.io_source) {
+      g_source_destroy(info.io_source);
+      g_source_unref(info.io_source);
     }
     libevdev_free(info.evdev);
     close(info.fd);
   }
   devices_.clear();
 
+  if (worker_loop_) {
+    g_main_loop_unref(worker_loop_);
+    worker_loop_ = nullptr;
+  }
+  if (worker_context_) {
+    g_main_context_unref(worker_context_);
+    worker_context_ = nullptr;
+  }
+
+  std::lock_guard<std::mutex> lock(mutex_);
   callback_ = nullptr;
 }
 
 FlValue* EvdevManager::ListGamepads() {
+  // Called from main thread. devices_ is not mutated after Start() returns
+  // except from the worker thread, which only adds/removes between loop
+  // iterations.  ListGamepads is called from a method-channel handler which
+  // also runs between main-loop iterations, so there is no data race on the
+  // device metadata (id, name, vendor_id, product_id are set once in
+  // AddDevice and never modified).  We do need the mutex for the map itself
+  // though, since the worker may be inserting/erasing.
+  // For simplicity, take the mutex.
+  std::lock_guard<std::mutex> lock(mutex_);
   FlValue* list = fl_value_new_list();
 
   for (const auto& [path, info] : devices_) {
@@ -80,6 +129,7 @@ FlValue* EvdevManager::ListGamepads() {
 }
 
 void EvdevManager::EmitExistingDevices() {
+  std::lock_guard<std::mutex> lock(mutex_);
   if (!callback_) return;
 
   for (const auto& [path, info] : devices_) {
@@ -103,7 +153,49 @@ void EvdevManager::EmitExistingDevices() {
 }
 
 // ---------------------------------------------------------------------------
-// Private
+// Worker thread
+// ---------------------------------------------------------------------------
+
+gpointer EvdevManager::ThreadFunc(gpointer user_data) {
+  auto* self = static_cast<EvdevManager*>(user_data);
+  g_main_context_push_thread_default(self->worker_context_);
+  g_main_loop_run(self->worker_loop_);
+  g_main_context_pop_thread_default(self->worker_context_);
+  return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// Event forwarding (worker → main thread)
+// ---------------------------------------------------------------------------
+
+void EvdevManager::ForwardEvent(FlValue* event) {
+  // ref the event so it survives until the idle callback runs on main thread.
+  fl_value_ref(event);
+
+  struct IdleData {
+    EvdevManager* self;
+    FlValue* event;
+  };
+  auto* data = new IdleData{this, event};
+
+  g_idle_add(
+      [](gpointer user_data) -> gboolean {
+        auto* d = static_cast<IdleData*>(user_data);
+        {
+          std::lock_guard<std::mutex> lock(d->self->mutex_);
+          if (d->self->callback_) {
+            d->self->callback_(d->event);
+          }
+        }
+        fl_value_unref(d->event);
+        delete d;
+        return G_SOURCE_REMOVE;
+      },
+      data);
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers
 // ---------------------------------------------------------------------------
 
 int64_t EvdevManager::NowMillis() {
@@ -115,7 +207,6 @@ int64_t EvdevManager::NowMillis() {
 }
 
 bool EvdevManager::IsGamepad(struct libevdev* dev) {
-  // Same heuristic as systemd/libmanette: has gamepad buttons or joystick axes.
   bool has_buttons = libevdev_has_event_code(dev, EV_KEY, BTN_A) ||
                      libevdev_has_event_code(dev, EV_KEY, BTN_TRIGGER) ||
                      libevdev_has_event_code(dev, EV_KEY, BTN_1);
@@ -137,7 +228,6 @@ void EvdevManager::ScanDevices() {
   struct dirent* entry;
   while ((entry = readdir(dir)) != nullptr) {
     if (strncmp(entry->d_name, "event", 5) != 0) continue;
-
     std::string path = std::string("/dev/input/") + entry->d_name;
     AddDevice(path.c_str());
   }
@@ -145,8 +235,10 @@ void EvdevManager::ScanDevices() {
 }
 
 void EvdevManager::AddDevice(const char* path) {
-  // Skip if already tracked.
-  if (devices_.count(path)) return;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (devices_.count(path)) return;
+  }
 
   int fd = open(path, O_RDONLY | O_NONBLOCK);
   if (fd < 0) return;
@@ -174,6 +266,10 @@ void EvdevManager::AddDevice(const char* path) {
   info.vendor_id = static_cast<uint16_t>(libevdev_get_id_vendor(dev));
   info.product_id = static_cast<uint16_t>(libevdev_get_id_product(dev));
 
+  // Initialize last-emitted values to NaN so the first event always fires.
+  for (int i = 0; i < 4; ++i) info.last_axis[i] = NAN;
+  for (int i = 0; i < 2; ++i) info.last_trigger[i] = NAN;
+
   // Cache abs_info for axis normalization.
   for (unsigned int code = 0; code < ABS_MAX; ++code) {
     if (libevdev_has_event_code(dev, EV_ABS, code)) {
@@ -184,24 +280,39 @@ void EvdevManager::AddDevice(const char* path) {
     }
   }
 
-  // Set up GLib IO watch.
+  // Attach an IO source to the worker context.
   GIOChannel* channel = g_io_channel_unix_new(fd);
   std::string path_str(path);
-  info.io_watch_id = g_io_add_watch(
-      channel, static_cast<GIOCondition>(G_IO_IN | G_IO_HUP | G_IO_ERR),
-      [](GIOChannel* source, GIOCondition condition,
-         gpointer user_data) -> gboolean {
-        auto* self = static_cast<EvdevManager*>(user_data);
 
-        int fd = g_io_channel_unix_get_fd(source);
-        // Find the device by fd.
-        for (auto& [p, d] : self->devices_) {
-          if (d.fd == fd) {
+  GSource* source = g_io_create_watch(
+      channel, static_cast<GIOCondition>(G_IO_IN | G_IO_HUP | G_IO_ERR));
+  g_io_channel_unref(channel);
+
+  struct WatchData {
+    EvdevManager* self;
+    std::string path;
+  };
+  auto* wd = new WatchData{this, path_str};
+
+  g_source_set_callback(
+      source,
+      reinterpret_cast<GSourceFunc>(static_cast<GIOFunc>(
+          [](GIOChannel* src, GIOCondition condition,
+             gpointer user_data) -> gboolean {
+            auto* wd = static_cast<WatchData*>(user_data);
+            auto* self = wd->self;
+
+            std::lock_guard<std::mutex> lock(self->mutex_);
+            auto it = self->devices_.find(wd->path);
+            if (it == self->devices_.end()) return G_SOURCE_REMOVE;
+
             if (condition & (G_IO_HUP | G_IO_ERR)) {
-              // Device disconnected — schedule removal on next idle to avoid
-              // modifying the map during iteration.
-              std::string* path_copy = new std::string(p);
-              g_idle_add(
+              auto* path_copy = new std::string(wd->path);
+              auto* mgr = self;
+              // Schedule removal as idle on worker context.
+              GSource* idle = g_idle_source_new();
+              g_source_set_callback(
+                  idle,
                   [](gpointer data) -> gboolean {
                     auto* args =
                         static_cast<std::pair<EvdevManager*, std::string*>*>(
@@ -211,75 +322,86 @@ void EvdevManager::AddDevice(const char* path) {
                     delete args;
                     return G_SOURCE_REMOVE;
                   },
-                  new std::pair<EvdevManager*, std::string*>(self, path_copy));
+                  new std::pair<EvdevManager*, std::string*>(mgr, path_copy),
+                  nullptr);
+              g_source_attach(idle, self->worker_context_);
+              g_source_unref(idle);
               return G_SOURCE_REMOVE;
             }
-            self->OnInput(d);
+
+            self->OnInput(it->second);
             return G_SOURCE_CONTINUE;
-          }
-        }
-        return G_SOURCE_REMOVE;
-      },
-      this);
-  g_io_channel_unref(channel);
+          })),
+      wd,
+      [](gpointer data) { delete static_cast<WatchData*>(data); });
 
-  devices_[path_str] = std::move(info);
+  g_source_attach(source, worker_context_);
+  info.io_source = source;
 
-  // Emit connection event.
-  if (callback_) {
-    const auto& stored = devices_[path_str];
-    int64_t ts = NowMillis();
-    FlValue* event = fl_value_new_map();
-    fl_value_set_string_take(event, "type",
-                             fl_value_new_string("connection"));
-    fl_value_set_string_take(event, "gamepadId",
-                             fl_value_new_string(stored.id.c_str()));
-    fl_value_set_string_take(event, "timestamp", fl_value_new_int(ts));
-    fl_value_set_string_take(event, "connected", fl_value_new_bool(TRUE));
-    fl_value_set_string_take(event, "name",
-                             fl_value_new_string(stored.name.c_str()));
-    fl_value_set_string_take(event, "vendorId",
-                             fl_value_new_int(stored.vendor_id));
-    fl_value_set_string_take(event, "productId",
-                             fl_value_new_int(stored.product_id));
-    callback_(event);
-    fl_value_unref(event);
+  // Build connection event before inserting (we need the info fields).
+  int64_t ts = NowMillis();
+  FlValue* event = fl_value_new_map();
+  fl_value_set_string_take(event, "type",
+                           fl_value_new_string("connection"));
+  fl_value_set_string_take(event, "gamepadId",
+                           fl_value_new_string(info.id.c_str()));
+  fl_value_set_string_take(event, "timestamp", fl_value_new_int(ts));
+  fl_value_set_string_take(event, "connected", fl_value_new_bool(TRUE));
+  fl_value_set_string_take(event, "name",
+                           fl_value_new_string(info.name.c_str()));
+  fl_value_set_string_take(event, "vendorId",
+                           fl_value_new_int(info.vendor_id));
+  fl_value_set_string_take(event, "productId",
+                           fl_value_new_int(info.product_id));
+
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    devices_[path_str] = std::move(info);
   }
+
+  ForwardEvent(event);
+  fl_value_unref(event);
 }
 
 void EvdevManager::RemoveDevice(const char* path) {
-  auto it = devices_.find(path);
-  if (it == devices_.end()) return;
+  DeviceInfo info;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = devices_.find(path);
+    if (it == devices_.end()) return;
+    info = std::move(it->second);
+    devices_.erase(it);
+  }
 
-  DeviceInfo info = std::move(it->second);
-  devices_.erase(it);
-
-  if (info.io_watch_id) {
-    g_source_remove(info.io_watch_id);
+  if (info.io_source) {
+    g_source_destroy(info.io_source);
+    g_source_unref(info.io_source);
   }
   libevdev_free(info.evdev);
   close(info.fd);
 
-  // Emit disconnection event.
-  if (callback_) {
-    int64_t ts = NowMillis();
-    FlValue* event = fl_value_new_map();
-    fl_value_set_string_take(event, "type",
-                             fl_value_new_string("connection"));
-    fl_value_set_string_take(event, "gamepadId",
-                             fl_value_new_string(info.id.c_str()));
-    fl_value_set_string_take(event, "timestamp", fl_value_new_int(ts));
-    fl_value_set_string_take(event, "connected", fl_value_new_bool(FALSE));
-    fl_value_set_string_take(event, "name",
-                             fl_value_new_string(info.name.c_str()));
-    fl_value_set_string_take(event, "vendorId",
-                             fl_value_new_int(info.vendor_id));
-    fl_value_set_string_take(event, "productId",
-                             fl_value_new_int(info.product_id));
-    callback_(event);
-    fl_value_unref(event);
-  }
+  int64_t ts = NowMillis();
+  FlValue* event = fl_value_new_map();
+  fl_value_set_string_take(event, "type",
+                           fl_value_new_string("connection"));
+  fl_value_set_string_take(event, "gamepadId",
+                           fl_value_new_string(info.id.c_str()));
+  fl_value_set_string_take(event, "timestamp", fl_value_new_int(ts));
+  fl_value_set_string_take(event, "connected", fl_value_new_bool(FALSE));
+  fl_value_set_string_take(event, "name",
+                           fl_value_new_string(info.name.c_str()));
+  fl_value_set_string_take(event, "vendorId",
+                           fl_value_new_int(info.vendor_id));
+  fl_value_set_string_take(event, "productId",
+                           fl_value_new_int(info.product_id));
+
+  ForwardEvent(event);
+  fl_value_unref(event);
 }
+
+// ---------------------------------------------------------------------------
+// Event reading (runs on worker thread, mutex held by caller)
+// ---------------------------------------------------------------------------
 
 void EvdevManager::OnInput(DeviceInfo& info) {
   struct input_event ev;
@@ -303,14 +425,11 @@ void EvdevManager::OnInput(DeviceInfo& info) {
                                fl_value_new_bool(pressed ? TRUE : FALSE));
       fl_value_set_string_take(fe, "value",
                                fl_value_new_float(pressed ? 1.0 : 0.0));
-      if (callback_) {
-        callback_(fe);
-      }
+      ForwardEvent(fe);
       fl_value_unref(fe);
 
     } else if (ev.type == EV_ABS) {
       if (ButtonMapping::IsHatAxis(ev.code)) {
-        // D-pad via hat axis.
         int64_t ts = NowMillis();
         const std::string& gid = info.id;
 
@@ -331,7 +450,7 @@ void EvdevManager::OnInput(DeviceInfo& info) {
                 fl_value_new_bool(pressed ? TRUE : FALSE));
             fl_value_set_string_take(
                 fe, "value", fl_value_new_float(pressed ? 1.0 : 0.0));
-            if (callback_) callback_(fe);
+            ForwardEvent(fe);
             fl_value_unref(fe);
           }
           {
@@ -350,7 +469,7 @@ void EvdevManager::OnInput(DeviceInfo& info) {
                 fl_value_new_bool(pressed ? TRUE : FALSE));
             fl_value_set_string_take(
                 fe, "value", fl_value_new_float(pressed ? 1.0 : 0.0));
-            if (callback_) callback_(fe);
+            ForwardEvent(fe);
             fl_value_unref(fe);
           }
         } else if (ev.code == ABS_HAT0Y) {
@@ -370,7 +489,7 @@ void EvdevManager::OnInput(DeviceInfo& info) {
                 fl_value_new_bool(pressed ? TRUE : FALSE));
             fl_value_set_string_take(
                 fe, "value", fl_value_new_float(pressed ? 1.0 : 0.0));
-            if (callback_) callback_(fe);
+            ForwardEvent(fe);
             fl_value_unref(fe);
           }
           {
@@ -389,13 +508,12 @@ void EvdevManager::OnInput(DeviceInfo& info) {
                 fl_value_new_bool(pressed ? TRUE : FALSE));
             fl_value_set_string_take(
                 fe, "value", fl_value_new_float(pressed ? 1.0 : 0.0));
-            if (callback_) callback_(fe);
+            ForwardEvent(fe);
             fl_value_unref(fe);
           }
         }
 
       } else if (ButtonMapping::IsTriggerAxis(ev.code)) {
-        // Trigger axes → emit as button events (0..1 range).
         int button_index = ButtonMapping::TriggerAxisToButtonIndex(ev.code);
         if (button_index < 0) continue;
 
@@ -404,8 +522,16 @@ void EvdevManager::OnInput(DeviceInfo& info) {
         double value = (range != 0)
                            ? static_cast<double>(ev.value - ai.minimum) / range
                            : 0.0;
-        bool pressed = value > 0.5;
 
+        // Throttle: skip if value hasn't changed meaningfully.
+        int trigger_idx = (ev.code == ABS_Z) ? 0 : 1;
+        if (!std::isnan(info.last_trigger[trigger_idx]) &&
+            std::fabs(value - info.last_trigger[trigger_idx]) < kAxisEpsilon) {
+          continue;
+        }
+        info.last_trigger[trigger_idx] = value;
+
+        bool pressed = value > 0.5;
         int64_t ts = NowMillis();
         FlValue* fe = fl_value_new_map();
         fl_value_set_string_take(fe, "type", fl_value_new_string("button"));
@@ -417,11 +543,10 @@ void EvdevManager::OnInput(DeviceInfo& info) {
         fl_value_set_string_take(fe, "pressed",
                                  fl_value_new_bool(pressed ? TRUE : FALSE));
         fl_value_set_string_take(fe, "value", fl_value_new_float(value));
-        if (callback_) callback_(fe);
+        ForwardEvent(fe);
         fl_value_unref(fe);
 
       } else {
-        // Regular stick axis → -1..1 range.
         int w3c_index = ButtonMapping::EvdevAxisToW3C(ev.code);
         if (w3c_index < 0) continue;
 
@@ -431,6 +556,14 @@ void EvdevManager::OnInput(DeviceInfo& info) {
                            ? 2.0 * (ev.value - ai.minimum) / range - 1.0
                            : 0.0;
 
+        // Throttle: skip if value hasn't changed meaningfully.
+        if (w3c_index < 4 &&
+            !std::isnan(info.last_axis[w3c_index]) &&
+            std::fabs(value - info.last_axis[w3c_index]) < kAxisEpsilon) {
+          continue;
+        }
+        if (w3c_index < 4) info.last_axis[w3c_index] = value;
+
         int64_t ts = NowMillis();
         FlValue* fe = fl_value_new_map();
         fl_value_set_string_take(fe, "type", fl_value_new_string("axis"));
@@ -439,7 +572,7 @@ void EvdevManager::OnInput(DeviceInfo& info) {
         fl_value_set_string_take(fe, "timestamp", fl_value_new_int(ts));
         fl_value_set_string_take(fe, "axis", fl_value_new_int(w3c_index));
         fl_value_set_string_take(fe, "value", fl_value_new_float(value));
-        if (callback_) callback_(fe);
+        ForwardEvent(fe);
         fl_value_unref(fe);
       }
     }
@@ -463,7 +596,6 @@ void EvdevManager::OnDirectoryChanged(GFileMonitor* monitor, GFile* file,
   g_autofree gchar* path = g_file_get_path(file);
   if (!path) return;
 
-  // Only care about event* nodes.
   g_autofree gchar* basename = g_file_get_basename(file);
   if (!basename || strncmp(basename, "event", 5) != 0) return;
 
