@@ -96,8 +96,18 @@ void EvdevManager::Stop() {
     worker_context_ = nullptr;
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
-  callback_ = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    for (FlValue* ev : pending_events_) {
+      fl_value_unref(ev);
+    }
+    pending_events_.clear();
+    idle_scheduled_ = false;
+  }
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    callback_ = nullptr;
+  }
 }
 
 FlValue* EvdevManager::ListGamepads() {
@@ -157,29 +167,45 @@ gpointer EvdevManager::ThreadFunc(gpointer user_data) {
 // ---------------------------------------------------------------------------
 
 void EvdevManager::ForwardEvent(FlValue* event) {
-  // ref the event so it survives until the idle callback runs on main thread.
   fl_value_ref(event);
 
-  struct IdleData {
-    EvdevManager* self;
-    FlValue* event;
-  };
-  auto* data = new IdleData{this, event};
+  std::lock_guard<std::mutex> lock(queue_mutex_);
+  pending_events_.push_back(event);
 
-  g_idle_add(
-      [](gpointer user_data) -> gboolean {
-        auto* d = static_cast<IdleData*>(user_data);
-        {
-          std::lock_guard<std::mutex> lock(d->self->mutex_);
-          if (d->self->callback_) {
-            d->self->callback_(d->event);
-          }
-        }
-        fl_value_unref(d->event);
-        delete d;
-        return G_SOURCE_REMOVE;
-      },
-      data);
+  if (!idle_scheduled_) {
+    idle_scheduled_ = true;
+    g_idle_add(DrainEvents, this);
+  }
+}
+
+gboolean EvdevManager::DrainEvents(gpointer user_data) {
+  auto* self = static_cast<EvdevManager*>(user_data);
+
+  std::vector<FlValue*> events;
+  {
+    std::lock_guard<std::mutex> lock(self->queue_mutex_);
+    events.swap(self->pending_events_);
+    self->idle_scheduled_ = false;
+  }
+
+  EventCallback cb;
+  {
+    std::lock_guard<std::mutex> lock(self->mutex_);
+    cb = self->callback_;
+  }
+
+  if (cb) {
+    for (FlValue* ev : events) {
+      cb(ev);
+      fl_value_unref(ev);
+    }
+  } else {
+    for (FlValue* ev : events) {
+      fl_value_unref(ev);
+    }
+  }
+
+  return G_SOURCE_REMOVE;
 }
 
 // ---------------------------------------------------------------------------

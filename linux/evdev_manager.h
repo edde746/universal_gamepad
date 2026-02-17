@@ -10,6 +10,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 /// Manages gamepad lifecycle via direct evdev on a dedicated GLib thread.
 ///
@@ -57,8 +58,12 @@ class EvdevManager {
   void RemoveDevice(const char* path);
   void OnInput(DeviceInfo& info);
 
-  /// Forward an FlValue event to the main thread for dispatch.
+  /// Queue an event for forwarding to the main thread. A single idle
+  /// callback drains the entire queue, avoiding per-event g_idle_add overhead.
   void ForwardEvent(FlValue* event);
+
+  /// Main-thread idle callback that drains pending_events_ in one batch.
+  static gboolean DrainEvents(gpointer user_data);
 
   static void OnDirectoryChanged(GFileMonitor* monitor, GFile* file,
                                   GFile* other, GFileMonitorEvent event_type,
@@ -77,6 +82,12 @@ class EvdevManager {
   // Shared state — protected by mutex_.
   std::mutex mutex_;
   EventCallback callback_;
+
+  // Event queue — protected by queue_mutex_ (separate to avoid deadlock with
+  // IO callbacks that hold mutex_ while calling ForwardEvent via OnInput).
+  std::mutex queue_mutex_;
+  std::vector<FlValue*> pending_events_;
+  bool idle_scheduled_ = false;
 };
 
 #endif  // EVDEV_MANAGER_H_
