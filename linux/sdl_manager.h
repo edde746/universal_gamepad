@@ -3,21 +3,25 @@
 
 #include <flutter_linux/flutter_linux.h>
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 #if HAVE_SDL3
 #include <SDL3/SDL.h>
 #endif
 
-/// Manages SDL3 gamepad lifecycle and event polling.
+/// Manages SDL3 gamepad lifecycle and event polling on a background thread.
 ///
-/// Initialises SDL with SDL_INIT_GAMEPAD and polls for events on a GLib
-/// timer (~16 ms, i.e. ~60 Hz). Gamepad connection, button, and axis events
-/// are forwarded to a caller-supplied callback as FlValue maps matching the
-/// plugin wire format.
+/// Initialises SDL with SDL_INIT_GAMEPAD on a dedicated poll thread that runs
+/// at ~60 Hz. Gamepad connection, button, and axis events are marshalled back
+/// to the GLib main thread via g_idle_add and forwarded to a caller-supplied
+/// callback as FlValue maps matching the plugin wire format.
 class SdlManager {
  public:
   /// Callback type: receives an owned FlValue* map for each event.
@@ -27,11 +31,11 @@ class SdlManager {
   SdlManager();
   ~SdlManager();
 
-  /// Starts SDL initialisation and event polling. Events are delivered via
-  /// |callback|, which must be callable from the GLib main thread.
+  /// Starts SDL event polling on a background thread. Events are delivered via
+  /// |callback| on the GLib main thread.
   void Start(EventCallback callback);
 
-  /// Stops event polling and shuts down SDL.
+  /// Stops event polling, joins the background thread, and shuts down SDL.
   void Stop();
 
   /// Returns a list (FlValue array) of currently connected gamepads.
@@ -49,11 +53,22 @@ class SdlManager {
     uint16_t product_id;
   };
 
+  /// Data passed through g_idle_add to dispatch an event on the main thread.
+  /// Carries a shared_ptr to the callback so the idle callback remains safe
+  /// even if the SdlManager has been destroyed by the time it fires.
+  struct IdleEventData {
+    FlValue* event;
+    std::shared_ptr<EventCallback> callback;
+  };
+
   /// Creates a gamepad ID string from a joystick ID (e.g. "linux_3").
   static std::string MakeGamepadId(SDL_JoystickID id);
 
   /// Returns the current timestamp in milliseconds since epoch.
   static int64_t NowMillis();
+
+  /// Background thread entry point: inits SDL, polls in a loop, cleans up.
+  void PollLoop();
 
   /// Processes all pending SDL events.
   void PollEvents();
@@ -71,21 +86,28 @@ class SdlManager {
   /// Handles a gamepad axis event.
   void HandleAxisEvent(SDL_JoystickID joystick_id, uint8_t axis, int16_t value);
 
-  /// GLib timeout callback (static C function).
-  static gboolean PollCallback(gpointer user_data);
+  /// Marshals an event to the main thread via g_idle_add.
+  void DispatchEvent(FlValue* event);
+
+  /// GLib idle callback that fires on the main thread.
+  static gboolean IdleDispatchCallback(gpointer user_data);
 
   /// Map of joystick ID to connected gamepad info.
   std::unordered_map<SDL_JoystickID, GamepadInfo> gamepads_;
 
-  /// GLib timeout source ID, or 0 if not polling.
-  guint poll_source_id_ = 0;
+  /// Background poll thread.
+  std::thread poll_thread_;
 
-  /// Whether SDL has been initialised.
-  bool sdl_initialized_ = false;
+  /// Thread-safe stop flag.
+  std::atomic<bool> running_{false};
+
+  /// Protects gamepads_ for cross-thread access.
+  std::mutex mutex_;
 #endif  // HAVE_SDL3
 
-  /// Event callback.
-  EventCallback callback_;
+  /// Event callback, shared with in-flight idle callbacks so they remain safe
+  /// even after SdlManager destruction.
+  std::shared_ptr<EventCallback> callback_;
 };
 
 #endif  // SDL_MANAGER_H_
