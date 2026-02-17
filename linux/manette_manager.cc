@@ -3,7 +3,6 @@
 #include "button_mapping.h"
 
 #include <chrono>
-#include <cstring>
 
 ManetteManager::ManetteManager() = default;
 
@@ -98,41 +97,6 @@ int64_t ManetteManager::NowMillis() {
   return static_cast<int64_t>(ms);
 }
 
-void ManetteManager::ParseGuid(const char* guid, uint16_t* vendor,
-                                uint16_t* product) {
-  *vendor = 0;
-  *product = 0;
-
-  if (!guid || strlen(guid) < 32) return;
-
-  // SDL GUID format: 32 hex chars, little-endian 16-bit fields.
-  // Bytes 8-9 (chars 16-19) = vendor ID, bytes 16-17 (chars 32... wait)
-  // Actually the SDL GUID layout for Linux evdev:
-  //   bytes 0-1: bus type (LE)
-  //   bytes 2-3: 0
-  //   bytes 4-5: vendor (LE)
-  //   bytes 6-7: 0
-  //   bytes 8-9: product (LE)
-  //   bytes 10-11: 0
-  //   bytes 12-15: version + driver
-  // Each byte = 2 hex chars, so vendor at chars 8-11, product at chars 16-19.
-  auto parse_le16 = [](const char* hex) -> uint16_t {
-    auto nibble = [](char c) -> uint8_t {
-      if (c >= '0' && c <= '9') return c - '0';
-      if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
-      if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
-      return 0;
-    };
-    // Little-endian: first byte (2 chars) is low byte.
-    uint8_t lo = (nibble(hex[0]) << 4) | nibble(hex[1]);
-    uint8_t hi = (nibble(hex[2]) << 4) | nibble(hex[3]);
-    return static_cast<uint16_t>((hi << 8) | lo);
-  };
-
-  *vendor = parse_le16(guid + 8);
-  *product = parse_le16(guid + 16);
-}
-
 void ManetteManager::AddDevice(ManetteDevice* device) {
   if (devices_.count(device)) return;
 
@@ -142,9 +106,8 @@ void ManetteManager::AddDevice(ManetteDevice* device) {
 
   const char* name = manette_device_get_name(device);
   info.name = name ? name : "Unknown Gamepad";
-
-  const char* guid = manette_device_get_guid(device);
-  ParseGuid(guid, &info.vendor_id, &info.product_id);
+  info.vendor_id = 0;
+  info.product_id = 0;
 
   // Connect per-device signals.
   info.signal_ids.push_back(g_signal_connect(

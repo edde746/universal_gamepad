@@ -52,11 +52,6 @@ class ManetteManager {
   /// Returns the current timestamp in milliseconds since epoch.
   static int64_t NowMillis();
 
-  /// Parses vendor and product IDs from the SDL GUID string returned by
-  /// manette_device_get_guid(). The GUID is a 32-char hex string with
-  /// little-endian fields; vendor is at byte offset 8 and product at 16.
-  static void ParseGuid(const char* guid, uint16_t* vendor, uint16_t* product);
-
   /// Registers per-device signal handlers and emits a connection event.
   void AddDevice(ManetteDevice* device);
 
