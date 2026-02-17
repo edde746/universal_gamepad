@@ -2,7 +2,6 @@ package dev.universal_gamepad
 
 import android.content.Context
 import android.hardware.input.InputManager
-import android.os.SystemClock
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -10,7 +9,7 @@ import kotlin.math.abs
 
 /**
  * Manages gamepad InputDevice tracking and translates Android input events into
- * the W3C Standard Gamepad wire format sent to Dart via [GamepadStreamHandler].
+ * compact positional lists sent to Dart via [GamepadStreamHandler].
  *
  * Uses [InputManager.InputDeviceListener] for connect/disconnect detection and
  * processes [MotionEvent] (axes) and [KeyEvent] (buttons) from the FlutterView
@@ -114,7 +113,6 @@ class GamepadInputManager(
 
         val deviceId = event.deviceId
         val timestamp = currentTimestamp()
-        val gamepadId = gamepadIdFor(deviceId)
         var handled = false
 
         // Ensure device is tracked.
@@ -129,7 +127,7 @@ class GamepadInputManager(
                 previousAxisValues[key] = value
                 val w3cAxis = ButtonMapping.axisIndexForMotionAxis(axis)
                 if (w3cAxis != null) {
-                    emitAxisEvent(gamepadId, timestamp, w3cAxis, value.toDouble())
+                    emitAxisEvent(deviceId, timestamp, w3cAxis, value.toDouble())
                     handled = true
                 }
             }
@@ -145,14 +143,14 @@ class GamepadInputManager(
                 val buttonIndex = ButtonMapping.triggerButtonIndexForAxis(axis)
                 if (buttonIndex != null) {
                     val pressed = value > 0.1f
-                    emitButtonEvent(gamepadId, timestamp, buttonIndex, pressed, value.toDouble())
+                    emitButtonEvent(deviceId, timestamp, buttonIndex, pressed, value.toDouble())
                     handled = true
                 }
             }
         }
 
         // -- Hat axes (D-pad via analog hat, convert to button events) ---------
-        handled = processHatAxes(event, deviceId, gamepadId, timestamp) || handled
+        handled = processHatAxes(event, deviceId, timestamp) || handled
 
         return handled
     }
@@ -169,7 +167,6 @@ class GamepadInputManager(
         val buttonIndex = ButtonMapping.buttonIndexForKeyCode(event.keyCode) ?: return false
         val deviceId = event.deviceId
         val timestamp = currentTimestamp()
-        val gamepadId = gamepadIdFor(deviceId)
 
         // Ensure device is tracked.
         ensureTracked(deviceId)
@@ -179,7 +176,7 @@ class GamepadInputManager(
 
         // Only emit on ACTION_DOWN and ACTION_UP; ignore repeats for press.
         if (event.action == KeyEvent.ACTION_DOWN || event.action == KeyEvent.ACTION_UP) {
-            emitButtonEvent(gamepadId, timestamp, buttonIndex, pressed, value)
+            emitButtonEvent(deviceId, timestamp, buttonIndex, pressed, value)
             return true
         }
 
@@ -204,12 +201,14 @@ class GamepadInputManager(
 
     // -- Private helpers -------------------------------------------------------
 
-    /** Scans for currently connected gamepads and adds them to tracked set. */
+    /** Scans for currently connected gamepads, tracks them and emits connection events. */
     private fun scanConnectedGamepads() {
         for (id in InputDevice.getDeviceIds()) {
             val device = InputDevice.getDevice(id) ?: continue
             if (isGamepad(device)) {
-                trackedDevices.add(id)
+                if (trackedDevices.add(id)) {
+                    emitConnectionEvent(device, connected = true)
+                }
             }
         }
     }
@@ -250,11 +249,8 @@ class GamepadInputManager(
         return true
     }
 
-    /** Builds the canonical gamepad ID string for the given Android device ID. */
-    private fun gamepadIdFor(deviceId: Int): String = "android_$deviceId"
-
-    /** Returns the current timestamp in milliseconds. */
-    private fun currentTimestamp(): Long = SystemClock.uptimeMillis()
+    /** Returns the current timestamp as milliseconds since the Unix epoch. */
+    private fun currentTimestamp(): Long = System.currentTimeMillis()
 
     /**
      * Processes AXIS_HAT_X and AXIS_HAT_Y from a MotionEvent, converting
@@ -263,7 +259,6 @@ class GamepadInputManager(
     private fun processHatAxes(
         event: MotionEvent,
         deviceId: Int,
-        gamepadId: String,
         timestamp: Long,
     ): Boolean {
         var handled = false
@@ -279,19 +274,19 @@ class GamepadInputManager(
 
             // Release old direction if it was pressed.
             if (prevHatX < -0.5f) {
-                emitButtonEvent(gamepadId, timestamp, ButtonMapping.DPAD_LEFT, pressed = false, value = 0.0)
+                emitButtonEvent(deviceId, timestamp, ButtonMapping.DPAD_LEFT, pressed = false, value = 0.0)
                 handled = true
             } else if (prevHatX > 0.5f) {
-                emitButtonEvent(gamepadId, timestamp, ButtonMapping.DPAD_RIGHT, pressed = false, value = 0.0)
+                emitButtonEvent(deviceId, timestamp, ButtonMapping.DPAD_RIGHT, pressed = false, value = 0.0)
                 handled = true
             }
 
             // Press new direction.
             if (hatX < -0.5f) {
-                emitButtonEvent(gamepadId, timestamp, ButtonMapping.DPAD_LEFT, pressed = true, value = 1.0)
+                emitButtonEvent(deviceId, timestamp, ButtonMapping.DPAD_LEFT, pressed = true, value = 1.0)
                 handled = true
             } else if (hatX > 0.5f) {
-                emitButtonEvent(gamepadId, timestamp, ButtonMapping.DPAD_RIGHT, pressed = true, value = 1.0)
+                emitButtonEvent(deviceId, timestamp, ButtonMapping.DPAD_RIGHT, pressed = true, value = 1.0)
                 handled = true
             }
         }
@@ -301,19 +296,19 @@ class GamepadInputManager(
 
             // Release old direction if it was pressed.
             if (prevHatY < -0.5f) {
-                emitButtonEvent(gamepadId, timestamp, ButtonMapping.DPAD_UP, pressed = false, value = 0.0)
+                emitButtonEvent(deviceId, timestamp, ButtonMapping.DPAD_UP, pressed = false, value = 0.0)
                 handled = true
             } else if (prevHatY > 0.5f) {
-                emitButtonEvent(gamepadId, timestamp, ButtonMapping.DPAD_DOWN, pressed = false, value = 0.0)
+                emitButtonEvent(deviceId, timestamp, ButtonMapping.DPAD_DOWN, pressed = false, value = 0.0)
                 handled = true
             }
 
             // Press new direction.
             if (hatY < -0.5f) {
-                emitButtonEvent(gamepadId, timestamp, ButtonMapping.DPAD_UP, pressed = true, value = 1.0)
+                emitButtonEvent(deviceId, timestamp, ButtonMapping.DPAD_UP, pressed = true, value = 1.0)
                 handled = true
             } else if (hatY > 0.5f) {
-                emitButtonEvent(gamepadId, timestamp, ButtonMapping.DPAD_DOWN, pressed = true, value = 1.0)
+                emitButtonEvent(deviceId, timestamp, ButtonMapping.DPAD_DOWN, pressed = true, value = 1.0)
                 handled = true
             }
         }
@@ -324,70 +319,49 @@ class GamepadInputManager(
     // -- Event emission --------------------------------------------------------
 
     private fun emitButtonEvent(
-        gamepadId: String,
+        gamepadId: Int,
         timestamp: Long,
         button: Int,
         pressed: Boolean,
         value: Double,
     ) {
-        val event = hashMapOf<String, Any>(
-            "type" to "button",
-            "gamepadId" to gamepadId,
-            "timestamp" to timestamp,
-            "button" to button,
-            "pressed" to pressed,
-            "value" to value,
-        )
-        streamHandler.send(event)
+        // Wire format: [1, gamepadId, timestamp, buttonIndex, pressed, value]
+        streamHandler.send(listOf(1, gamepadId, timestamp, button, pressed, value))
     }
 
     private fun emitAxisEvent(
-        gamepadId: String,
+        gamepadId: Int,
         timestamp: Long,
         axis: Int,
         value: Double,
     ) {
-        val event = hashMapOf<String, Any>(
-            "type" to "axis",
-            "gamepadId" to gamepadId,
-            "timestamp" to timestamp,
-            "axis" to axis,
-            "value" to value,
-        )
-        streamHandler.send(event)
+        // Wire format: [2, gamepadId, timestamp, axisIndex, value]
+        streamHandler.send(listOf(2, gamepadId, timestamp, axis, value))
     }
 
     private fun emitConnectionEvent(device: InputDevice, connected: Boolean) {
         val timestamp = currentTimestamp()
-        val event = hashMapOf<String, Any>(
-            "type" to "connection",
-            "gamepadId" to gamepadIdFor(device.id),
-            "timestamp" to timestamp,
-            "connected" to connected,
-            "name" to (device.name ?: "Unknown"),
-            "vendorId" to device.vendorId,
-            "productId" to device.productId,
-        )
-        streamHandler.send(event)
+        // Wire format: [0, gamepadId, timestamp, connected, name, vendorId, productId]
+        streamHandler.send(listOf(
+            0,
+            device.id,
+            timestamp,
+            connected,
+            device.name ?: "Unknown",
+            device.vendorId,
+            device.productId,
+        ))
     }
 
     private fun emitDisconnectionEvent(deviceId: Int) {
         val timestamp = currentTimestamp()
-        val event = hashMapOf<String, Any>(
-            "type" to "connection",
-            "gamepadId" to gamepadIdFor(deviceId),
-            "timestamp" to timestamp,
-            "connected" to false,
-            "name" to "Unknown",
-            "vendorId" to 0,
-            "productId" to 0,
-        )
-        streamHandler.send(event)
+        // Wire format: [0, gamepadId, timestamp, connected, name, vendorId, productId]
+        streamHandler.send(listOf(0, deviceId, timestamp, false, "Unknown", 0, 0))
     }
 
     private fun gamepadInfoMap(device: InputDevice): HashMap<String, Any> {
         return hashMapOf(
-            "id" to gamepadIdFor(device.id),
+            "id" to device.id,
             "name" to (device.name ?: "Unknown"),
             "vendorId" to device.vendorId,
             "productId" to device.productId,

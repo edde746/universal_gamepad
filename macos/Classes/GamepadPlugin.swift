@@ -7,9 +7,12 @@ import FlutterMacOS
 /// The EventChannel streams gamepad connection, button, and axis events.
 /// The MethodChannel supports `listGamepads` and `dispose`.
 public class GamepadPlugin: NSObject, FlutterPlugin {
+
+    private let controllerManager: GCControllerManager
     private let streamHandler: GamepadStreamHandler
 
-    init(streamHandler: GamepadStreamHandler) {
+    init(controllerManager: GCControllerManager, streamHandler: GamepadStreamHandler) {
+        self.controllerManager = controllerManager
         self.streamHandler = streamHandler
         super.init()
     }
@@ -18,6 +21,7 @@ public class GamepadPlugin: NSObject, FlutterPlugin {
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let streamHandler = GamepadStreamHandler()
+        let controllerManager = GCControllerManager(streamHandler: streamHandler)
 
         // Method channel
         let methodChannel = FlutterMethodChannel(
@@ -32,8 +36,15 @@ public class GamepadPlugin: NSObject, FlutterPlugin {
         )
         eventChannel.setStreamHandler(streamHandler)
 
-        let instance = GamepadPlugin(streamHandler: streamHandler)
+        let instance = GamepadPlugin(
+            controllerManager: controllerManager,
+            streamHandler: streamHandler
+        )
         registrar.addMethodCallDelegate(instance, channel: methodChannel)
+
+        // Start observing controllers immediately so we capture connections
+        // that happen before the Dart side listens.
+        controllerManager.start()
     }
 
     // MARK: - FlutterPlugin method handling
@@ -42,9 +53,9 @@ public class GamepadPlugin: NSObject, FlutterPlugin {
                        result: @escaping FlutterResult) {
         switch call.method {
         case "listGamepads":
-            result(streamHandler.listGamepads())
+            result(controllerManager.listGamepads())
         case "dispose":
-            streamHandler.dispose()
+            controllerManager.stop()
             result(nil)
         default:
             result(FlutterMethodNotImplemented)

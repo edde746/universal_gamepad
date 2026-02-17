@@ -1,48 +1,62 @@
 import FlutterMacOS
 
-/// FlutterStreamHandler that bridges native gamepad events to the Dart EventChannel.
+/// FlutterStreamHandler that forwards native gamepad events to Dart.
 ///
-/// When Flutter begins listening (`onListen`), the stream handler starts
-/// the `GCControllerManager` which observes controller connections and input.
-/// When Flutter cancels (`onCancel`), the manager is stopped and resources
-/// are released.
+/// Events are queued if no sink is attached yet; once a listener subscribes
+/// all queued events are flushed immediately.
 class GamepadStreamHandler: NSObject, FlutterStreamHandler {
+
+    /// The active event sink provided by Flutter's EventChannel.
     private var eventSink: FlutterEventSink?
-    private var manager: GCControllerManager?
+
+    /// Events received before the Dart side starts listening.
+    private var pendingEvents: [[Any]] = []
+
+    /// Thread-safety lock for sink / queue access.
+    private let lock = NSLock()
 
     // MARK: - FlutterStreamHandler
 
     func onListen(withArguments arguments: Any?,
                   eventSink events: @escaping FlutterEventSink) -> FlutterError? {
-        self.eventSink = events
-        let mgr = GCControllerManager { [weak self] event in
-            DispatchQueue.main.async {
-                self?.eventSink?(event)
-            }
+        lock.lock()
+        eventSink = events
+
+        // Flush any events that arrived before the listener was attached.
+        for event in pendingEvents {
+            events(event)
         }
-        self.manager = mgr
-        mgr.start()
+        pendingEvents.removeAll()
+        lock.unlock()
+
         return nil
     }
 
     func onCancel(withArguments arguments: Any?) -> FlutterError? {
-        manager?.stop()
-        manager = nil
+        lock.lock()
         eventSink = nil
+        lock.unlock()
+
         return nil
     }
 
     // MARK: - Internal API
 
-    /// Returns the list of currently connected gamepads as serialisable dictionaries.
-    func listGamepads() -> [[String: Any]] {
-        return manager?.listGamepads() ?? []
-    }
-
-    /// Tears down the manager and clears the event sink.
-    func dispose() {
-        manager?.stop()
-        manager = nil
-        eventSink = nil
+    /// Sends a gamepad event array to Dart.
+    ///
+    /// If the sink is not yet available the event is queued.
+    func send(event: [Any]) {
+        lock.lock()
+        if let sink = eventSink {
+            lock.unlock()
+            // Dispatch on the main thread to satisfy Flutter platform channel
+            // requirements.
+            DispatchQueue.main.async {
+                sink(event)
+            }
+        } else {
+            pendingEvents.append(event)
+            lock.unlock()
+        }
     }
 }

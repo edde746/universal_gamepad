@@ -3,20 +3,17 @@ import GameController
 
 /// Manages GCController lifecycle and translates events into the plugin wire format.
 ///
-/// Each connected controller is assigned a stable identifier of the form
-/// `"macos_<index>"`. The manager observes `GCController.didConnectNotification`
-/// and `GCController.didDisconnectNotification`, and installs a
+/// Each connected controller is assigned a stable integer identifier. The manager
+/// observes `GCController.didConnectNotification` and
+/// `GCController.didDisconnectNotification`, and installs a
 /// `valueChangedHandler` on each controller's `extendedGamepad` to receive
 /// button and axis input.
 class GCControllerManager {
-    /// Callback invoked on every gamepad event. The dictionary follows the
-    /// wire format expected by the Dart side.
-    typealias EventCallback = ([String: Any]) -> Void
 
-    private let onEvent: EventCallback
+    private let streamHandler: GamepadStreamHandler
 
-    /// Maps a GCController instance (by ObjectIdentifier) to its assigned ID string.
-    private var controllerIds: [ObjectIdentifier: String] = [:]
+    /// Maps a GCController instance (by ObjectIdentifier) to its assigned int ID.
+    private var controllerIds: [ObjectIdentifier: Int] = [:]
 
     /// Auto-incrementing counter used to generate unique IDs.
     private var nextIndex: Int = 0
@@ -27,8 +24,8 @@ class GCControllerManager {
 
     // MARK: - Initialisation
 
-    init(onEvent: @escaping EventCallback) {
-        self.onEvent = onEvent
+    init(streamHandler: GamepadStreamHandler) {
+        self.streamHandler = streamHandler
     }
 
     // MARK: - Lifecycle
@@ -82,7 +79,7 @@ class GCControllerManager {
     }
 
     /// Returns a list of currently connected gamepads in the wire format used by
-    /// `listGamepads` on the Dart side.
+    /// `listGamepads` on the Dart side (MethodChannel — still uses maps).
     func listGamepads() -> [[String: Any]] {
         var results: [[String: Any]] = []
         for controller in GCController.controllers() {
@@ -110,26 +107,23 @@ class GCControllerManager {
         // Guard against duplicate connection notifications.
         guard controllerIds[key] == nil else { return }
 
-        let gamepadId = "macos_\(nextIndex)"
+        let gamepadId = nextIndex
         nextIndex += 1
         controllerIds[key] = gamepadId
 
         installValueChangedHandler(on: controller, gamepadId: gamepadId)
 
-        var event: [String: Any] = [
-            "type": "connection",
-            "gamepadId": gamepadId,
-            "timestamp": currentTimestamp(),
-            "connected": true,
-            "name": controllerName(controller),
+        // Wire format: [0, gamepadId, timestamp, connected, name, vendorId, productId]
+        let event: [Any] = [
+            0,
+            gamepadId,
+            currentTimestamp(),
+            true,
+            controllerName(controller),
+            vendorId(for: controller) as Any,
+            productId(for: controller) as Any,
         ]
-        if let vid = vendorId(for: controller) {
-            event["vendorId"] = vid
-        }
-        if let pid = productId(for: controller) {
-            event["productId"] = pid
-        }
-        onEvent(event)
+        streamHandler.send(event: event)
     }
 
     private func controllerDisconnected(_ controller: GCController) {
@@ -138,25 +132,22 @@ class GCControllerManager {
 
         controller.extendedGamepad?.valueChangedHandler = nil
 
-        var event: [String: Any] = [
-            "type": "connection",
-            "gamepadId": gamepadId,
-            "timestamp": currentTimestamp(),
-            "connected": false,
-            "name": controllerName(controller),
+        // Wire format: [0, gamepadId, timestamp, connected, name, vendorId, productId]
+        let event: [Any] = [
+            0,
+            gamepadId,
+            currentTimestamp(),
+            false,
+            controllerName(controller),
+            vendorId(for: controller) as Any,
+            productId(for: controller) as Any,
         ]
-        if let vid = vendorId(for: controller) {
-            event["vendorId"] = vid
-        }
-        if let pid = productId(for: controller) {
-            event["productId"] = pid
-        }
-        onEvent(event)
+        streamHandler.send(event: event)
     }
 
     // MARK: - Input handling
 
-    private func installValueChangedHandler(on controller: GCController, gamepadId: String) {
+    private func installValueChangedHandler(on controller: GCController, gamepadId: Int) {
         guard let gamepad = controller.extendedGamepad else { return }
 
         gamepad.valueChangedHandler = { [weak self] (gp: GCExtendedGamepad,
@@ -217,27 +208,16 @@ class GCControllerManager {
 
     // MARK: - Event dispatch helpers
 
-    private func sendButtonEvent(gamepadId: String, buttonIndex: Int,
+    private func sendButtonEvent(gamepadId: Int, buttonIndex: Int,
                                  pressed: Bool, value: Float, timestamp: Int) {
-        onEvent([
-            "type": "button",
-            "gamepadId": gamepadId,
-            "timestamp": timestamp,
-            "button": buttonIndex,
-            "pressed": pressed,
-            "value": Double(value),
-        ])
+        // Wire format: [1, gamepadId, timestamp, buttonIndex, pressed, value]
+        streamHandler.send(event: [1, gamepadId, timestamp, buttonIndex, pressed, Double(value)])
     }
 
-    private func sendAxisEvent(gamepadId: String, axisIndex: Int,
+    private func sendAxisEvent(gamepadId: Int, axisIndex: Int,
                                value: Float, timestamp: Int) {
-        onEvent([
-            "type": "axis",
-            "gamepadId": gamepadId,
-            "timestamp": timestamp,
-            "axis": axisIndex,
-            "value": Double(value),
-        ])
+        // Wire format: [2, gamepadId, timestamp, axisIndex, value]
+        streamHandler.send(event: [2, gamepadId, timestamp, axisIndex, Double(value)])
     }
 
     // MARK: - Utilities
