@@ -1,7 +1,7 @@
 #include "gamepad_plugin.h"
 
 #include "gamepad_stream_handler.h"
-#include "sdl_manager.h"
+#include "manette_manager.h"
 
 #include <cstring>
 #include <memory>
@@ -9,7 +9,7 @@
 // Plugin state, allocated once per registration and freed on teardown.
 struct GamepadPlugin {
   std::unique_ptr<GamepadStreamHandler> stream_handler;
-  std::unique_ptr<SdlManager> sdl_manager;
+  std::unique_ptr<ManetteManager> manager;
   FlMethodChannel* method_channel;
   FlEventChannel* event_channel;
 };
@@ -27,7 +27,7 @@ static void method_call_cb(FlMethodChannel* channel,
   const gchar* method = fl_method_call_get_name(method_call);
 
   if (strcmp(method, "listGamepads") == 0) {
-    FlValue* result = plugin->sdl_manager->ListGamepads();
+    FlValue* result = plugin->manager->ListGamepads();
     g_autoptr(FlMethodResponse) response =
         FL_METHOD_RESPONSE(fl_method_success_response_new(result));
     fl_value_unref(result);
@@ -38,7 +38,7 @@ static void method_call_cb(FlMethodChannel* channel,
                 error->message);
     }
   } else if (strcmp(method, "dispose") == 0) {
-    plugin->sdl_manager->Stop();
+    plugin->manager->Stop();
     g_autoptr(FlMethodResponse) response =
         FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
     g_autoptr(GError) error = nullptr;
@@ -73,7 +73,7 @@ void gamepad_plugin_register_with_registrar(
 
   g_plugin = new GamepadPlugin();
   g_plugin->stream_handler = std::make_unique<GamepadStreamHandler>();
-  g_plugin->sdl_manager = std::make_unique<SdlManager>();
+  g_plugin->manager = std::make_unique<ManetteManager>();
 
   FlBinaryMessenger* messenger =
       fl_plugin_registrar_get_messenger(registrar);
@@ -91,10 +91,10 @@ void gamepad_plugin_register_with_registrar(
       messenger, "dev.universal_gamepad/events", FL_METHOD_CODEC(codec));
   g_plugin->stream_handler->SetChannel(g_plugin->event_channel);
 
-  // Wire the stream handler to the SDL manager: when Dart starts listening
-  // we start SDL polling, and when Dart cancels we stop.
+  // Wire the stream handler to the manager: when Dart starts listening
+  // we start monitoring, and when Dart cancels we stop.
   GamepadStreamHandler* handler = g_plugin->stream_handler.get();
-  SdlManager* manager = g_plugin->sdl_manager.get();
+  ManetteManager* manager = g_plugin->manager.get();
 
   g_plugin->stream_handler->SetListenCallback(
       [manager, handler](bool listening) {

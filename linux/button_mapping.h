@@ -2,12 +2,9 @@
 #define BUTTON_MAPPING_H_
 
 #include <cstdint>
+#include <linux/input-event-codes.h>
 
-#if HAVE_SDL3
-#include <SDL3/SDL.h>
-#endif
-
-/// Maps SDL3 gamepad buttons and axes to W3C Standard Gamepad indices.
+/// Maps Linux evdev button/axis codes to W3C Standard Gamepad indices.
 ///
 /// W3C Standard Gamepad button mapping:
 ///   0 = a (bottom), 1 = b (right), 2 = x (left), 3 = y (top)
@@ -21,9 +18,9 @@
 /// W3C Standard Gamepad axis mapping:
 ///   0 = leftStickX, 1 = leftStickY, 2 = rightStickX, 3 = rightStickY
 ///
-/// SDL3 trigger axes (SDL_GAMEPAD_AXIS_LEFT_TRIGGER and
-/// SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) are mapped to button indices 6 and 7
+/// Trigger axes (ABS_Z / ABS_RZ) are mapped to button indices 6 and 7
 /// respectively, since the W3C spec treats triggers as analog buttons.
+/// D-pad (12-15) comes from hat axis events (ABS_HAT0X / ABS_HAT0Y).
 namespace ButtonMapping {
 
 // W3C button indices.
@@ -51,30 +48,23 @@ constexpr int kLeftStickY = 1;
 constexpr int kRightStickX = 2;
 constexpr int kRightStickY = 3;
 
-#if HAVE_SDL3
-
-/// Maps an SDL_GamepadButton to its W3C Standard Gamepad button index.
+/// Maps an evdev button code to its W3C Standard Gamepad button index.
 /// Returns -1 if the button has no standard mapping.
-int SdlButtonToW3C(SDL_GamepadButton button);
+int EvdevButtonToW3C(uint16_t code);
 
-/// Maps an SDL_GamepadAxis to its W3C Standard Gamepad axis index.
-/// Returns -1 if the axis is a trigger (triggers are treated as buttons).
-int SdlAxisToW3C(SDL_GamepadAxis axis);
+/// Maps an evdev absolute axis code to its W3C Standard Gamepad axis index.
+/// Returns -1 if the axis is a trigger or hat (those are treated as buttons).
+int EvdevAxisToW3C(uint16_t code);
 
-/// Returns true if the given SDL axis is a trigger axis.
-bool IsTriggerAxis(SDL_GamepadAxis axis);
+/// Returns true if the given evdev axis is a trigger axis (ABS_Z or ABS_RZ).
+bool IsTriggerAxis(uint16_t code);
 
 /// Returns the W3C button index for the given trigger axis.
 /// Only valid when IsTriggerAxis() returns true.
-int TriggerAxisToButtonIndex(SDL_GamepadAxis axis);
+int TriggerAxisToButtonIndex(uint16_t code);
 
-/// Normalizes an SDL stick axis value (-32768..32767) to -1.0..1.0.
-double NormalizeStickAxis(int16_t value);
-
-/// Normalizes an SDL trigger axis value (0..32767) to 0.0..1.0.
-double NormalizeTriggerAxis(int16_t value);
-
-#endif  // HAVE_SDL3
+/// Returns true if the given evdev axis is a hat/d-pad axis.
+bool IsHatAxis(uint16_t code);
 
 }  // namespace ButtonMapping
 

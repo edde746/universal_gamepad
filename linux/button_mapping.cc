@@ -1,94 +1,71 @@
 #include "button_mapping.h"
 
-#if HAVE_SDL3
-
 namespace ButtonMapping {
 
-int SdlButtonToW3C(SDL_GamepadButton button) {
-  switch (button) {
-    case SDL_GAMEPAD_BUTTON_SOUTH:
+int EvdevButtonToW3C(uint16_t code) {
+  switch (code) {
+    case BTN_SOUTH:
       return kButtonA;
-    case SDL_GAMEPAD_BUTTON_EAST:
+    case BTN_EAST:
       return kButtonB;
-    case SDL_GAMEPAD_BUTTON_WEST:
+    case BTN_WEST:
       return kButtonX;
-    case SDL_GAMEPAD_BUTTON_NORTH:
+    case BTN_NORTH:
       return kButtonY;
-    case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
+    case BTN_TL:
       return kLeftShoulder;
-    case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
+    case BTN_TR:
       return kRightShoulder;
-    case SDL_GAMEPAD_BUTTON_BACK:
+    case BTN_TL2:
+      return kLeftTrigger;
+    case BTN_TR2:
+      return kRightTrigger;
+    case BTN_SELECT:
       return kBack;
-    case SDL_GAMEPAD_BUTTON_START:
+    case BTN_START:
       return kStart;
-    case SDL_GAMEPAD_BUTTON_LEFT_STICK:
+    case BTN_THUMBL:
       return kLeftStickButton;
-    case SDL_GAMEPAD_BUTTON_RIGHT_STICK:
+    case BTN_THUMBR:
       return kRightStickButton;
-    case SDL_GAMEPAD_BUTTON_DPAD_UP:
-      return kDpadUp;
-    case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
-      return kDpadDown;
-    case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
-      return kDpadLeft;
-    case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
-      return kDpadRight;
-    case SDL_GAMEPAD_BUTTON_GUIDE:
+    case BTN_MODE:
       return kGuide;
     default:
       return -1;
   }
 }
 
-int SdlAxisToW3C(SDL_GamepadAxis axis) {
-  switch (axis) {
-    case SDL_GAMEPAD_AXIS_LEFTX:
+int EvdevAxisToW3C(uint16_t code) {
+  switch (code) {
+    case ABS_X:
       return kLeftStickX;
-    case SDL_GAMEPAD_AXIS_LEFTY:
+    case ABS_Y:
       return kLeftStickY;
-    case SDL_GAMEPAD_AXIS_RIGHTX:
+    case ABS_RX:
       return kRightStickX;
-    case SDL_GAMEPAD_AXIS_RIGHTY:
+    case ABS_RY:
       return kRightStickY;
     default:
-      // Trigger axes are not standard axes; they are treated as buttons.
       return -1;
   }
 }
 
-bool IsTriggerAxis(SDL_GamepadAxis axis) {
-  return axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ||
-         axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
+bool IsTriggerAxis(uint16_t code) {
+  return code == ABS_Z || code == ABS_RZ;
 }
 
-int TriggerAxisToButtonIndex(SDL_GamepadAxis axis) {
-  if (axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER) {
+int TriggerAxisToButtonIndex(uint16_t code) {
+  if (code == ABS_Z) {
     return kLeftTrigger;
   }
-  if (axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) {
+  if (code == ABS_RZ) {
     return kRightTrigger;
   }
   return -1;
 }
 
-double NormalizeStickAxis(int16_t value) {
-  // SDL stick axes range from -32768 to 32767.
-  // Clamp -32768 to -32767 so the range is symmetric, then divide.
-  if (value < -32767) {
-    value = -32767;
-  }
-  return static_cast<double>(value) / 32767.0;
-}
-
-double NormalizeTriggerAxis(int16_t value) {
-  // SDL trigger axes range from 0 to 32767.
-  if (value < 0) {
-    value = 0;
-  }
-  return static_cast<double>(value) / 32767.0;
+bool IsHatAxis(uint16_t code) {
+  return code == ABS_HAT0X || code == ABS_HAT0Y;
 }
 
 }  // namespace ButtonMapping
-
-#endif  // HAVE_SDL3
