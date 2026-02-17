@@ -29,7 +29,7 @@ void ManetteManager::Start(EventCallback callback) {
   while (manette_monitor_iter_next(iter, &device)) {
     AddDevice(device);
   }
-  g_free(iter);
+  manette_monitor_iter_free(iter);
 #else
   g_warning(
       "gamepad: libmanette not available. Gamepad support is disabled.");
@@ -85,6 +85,31 @@ FlValue* ManetteManager::ListGamepads() {
 #endif
 
   return list;
+}
+
+void ManetteManager::EmitExistingDevices() {
+#if HAVE_MANETTE
+  if (!callback_) return;
+
+  for (const auto& [dev, info] : devices_) {
+    int64_t ts = NowMillis();
+    FlValue* event = fl_value_new_map();
+    fl_value_set_string_take(event, "type",
+                             fl_value_new_string("connection"));
+    fl_value_set_string_take(event, "gamepadId",
+                             fl_value_new_string(info.id.c_str()));
+    fl_value_set_string_take(event, "timestamp", fl_value_new_int(ts));
+    fl_value_set_string_take(event, "connected", fl_value_new_bool(TRUE));
+    fl_value_set_string_take(event, "name",
+                             fl_value_new_string(info.name.c_str()));
+    fl_value_set_string_take(event, "vendorId",
+                             fl_value_new_int(info.vendor_id));
+    fl_value_set_string_take(event, "productId",
+                             fl_value_new_int(info.product_id));
+    callback_(event);
+    fl_value_unref(event);
+  }
+#endif
 }
 
 #if HAVE_MANETTE

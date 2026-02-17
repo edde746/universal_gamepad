@@ -38,6 +38,12 @@ class ManetteManager {
   /// Caller owns the returned FlValue*.
   FlValue* ListGamepads();
 
+  /// Emits a connection event for each already-connected device via the
+  /// current callback. Call after subscribing to the event stream so that
+  /// the listener is informed of gamepads that were connected before it
+  /// started listening.
+  void EmitExistingDevices();
+
  private:
 #if HAVE_MANETTE
   struct DeviceInfo {

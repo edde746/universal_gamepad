@@ -91,19 +91,22 @@ void gamepad_plugin_register_with_registrar(
       messenger, "dev.universal_gamepad/events", FL_METHOD_CODEC(codec));
   g_plugin->stream_handler->SetChannel(g_plugin->event_channel);
 
-  // Wire the stream handler to the manager: when Dart starts listening
-  // we start monitoring, and when Dart cancels we stop.
+  // Start monitoring eagerly so that listGamepads() works before the Dart
+  // event stream is subscribed to. SendEvent safely no-ops when not listening.
   GamepadStreamHandler* handler = g_plugin->stream_handler.get();
   ManetteManager* manager = g_plugin->manager.get();
 
+  manager->Start([handler](FlValue* event) {
+    handler->SendEvent(event);
+  });
+
+  // When Dart starts listening, emit connection events for already-connected
+  // gamepads. On cancel, do nothing — the monitor keeps running so
+  // listGamepads() stays accurate. dispose() calls Stop().
   g_plugin->stream_handler->SetListenCallback(
-      [manager, handler](bool listening) {
+      [manager](bool listening) {
         if (listening) {
-          manager->Start([handler](FlValue* event) {
-            handler->SendEvent(event);
-          });
-        } else {
-          manager->Stop();
+          manager->EmitExistingDevices();
         }
       });
 }
