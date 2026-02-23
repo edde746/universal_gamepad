@@ -82,6 +82,12 @@ void GamepadPlugin::HandleMethodCall(
   } else if (method == "dispose") {
     sdl_manager_->StopPolling();
     result->Success();
+  } else if (method == "pause") {
+    sdl_manager_->Pause();
+    result->Success();
+  } else if (method == "resume") {
+    sdl_manager_->Resume();
+    result->Success();
   } else {
     result->NotImplemented();
   }

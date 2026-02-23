@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 
@@ -34,5 +35,17 @@ class MethodChannelGamepad extends GamepadPlatform {
   Future<void> dispose() async {
     await _methodChannel.invokeMethod<void>('dispose');
     _events = null;
+  }
+
+  @override
+  Future<void> pause() async {
+    if (!Platform.isWindows) return;
+    await _methodChannel.invokeMethod<void>('pause');
+  }
+
+  @override
+  Future<void> resume() async {
+    if (!Platform.isWindows) return;
+    await _methodChannel.invokeMethod<void>('resume');
   }
 }

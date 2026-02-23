@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -38,6 +39,14 @@ class SdlManager {
 
   /// Stops polling and joins the background thread.
   void StopPolling();
+
+  /// Pauses gamepad polling — closes all device handles so other apps
+  /// can use gamepads. Emits disconnect events for each open gamepad.
+  void Pause();
+
+  /// Resumes gamepad polling after a Pause(). Gamepads will be
+  /// re-detected and emit connection events.
+  void Resume();
 
   /// Returns a list of currently connected gamepads as EncodableList.
   /// Each element is an EncodableMap with keys: id, name, vendorId, productId.
@@ -84,12 +93,18 @@ class SdlManager {
 
   std::thread poll_thread_;
   std::atomic<bool> running_{false};
+  std::atomic<bool> paused_{false};
+  std::mutex pause_mutex_;
+  std::condition_variable pause_cv_;
 
   /// Protects gamepads_ for cross-thread access from ListGamepads().
   std::mutex state_mutex_;
 
   /// Map of joystick ID to connected gamepad info.
   std::unordered_map<SDL_JoystickID, GamepadInfo> gamepads_;
+
+  /// Closes all open gamepad handles and emits disconnect events.
+  void CloseAllGamepads();
 };
 
 }  // namespace gamepad

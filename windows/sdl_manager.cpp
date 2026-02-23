@@ -25,9 +25,36 @@ void SdlManager::StartPolling() {
 
 void SdlManager::StopPolling() {
   running_.store(false);
+  pause_cv_.notify_one();
   if (poll_thread_.joinable()) {
     poll_thread_.join();
   }
+}
+
+void SdlManager::Pause() {
+  paused_.store(true);
+}
+
+void SdlManager::Resume() {
+  paused_.store(false);
+  pause_cv_.notify_one();
+}
+
+void SdlManager::CloseAllGamepads() {
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  for (auto& [id, info] : gamepads_) {
+    flutter::EncodableList event;
+    event.push_back(flutter::EncodableValue(0));
+    event.push_back(flutter::EncodableValue(static_cast<int32_t>(id)));
+    event.push_back(flutter::EncodableValue(CurrentTimestamp()));
+    event.push_back(flutter::EncodableValue(false));
+    event.push_back(flutter::EncodableValue(info.name));
+    event.push_back(flutter::EncodableValue(static_cast<int32_t>(info.vendor_id)));
+    event.push_back(flutter::EncodableValue(static_cast<int32_t>(info.product_id)));
+    stream_handler_->SendEvent(flutter::EncodableValue(event));
+    if (info.gamepad) SDL_CloseGamepad(info.gamepad);
+  }
+  gamepads_.clear();
 }
 
 flutter::EncodableList SdlManager::ListGamepads() {
@@ -57,20 +84,28 @@ void SdlManager::PollLoop() {
   }
 
   while (running_.load()) {
+    if (paused_.load()) {
+      CloseAllGamepads();
+      // Drain stale events
+      SDL_Event discard;
+      while (SDL_PollEvent(&discard)) {}
+      // Sleep until resumed or stopped
+      {
+        std::unique_lock<std::mutex> lock(pause_mutex_);
+        pause_cv_.wait(lock, [this] {
+          return !paused_.load() || !running_.load();
+        });
+      }
+      // Drain again after wake
+      while (SDL_PollEvent(&discard)) {}
+      continue;
+    }
     PollEvents();
     std::this_thread::sleep_for(kPollInterval);
   }
 
   // Cleanup: close all gamepads and quit the subsystem.
-  {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    for (auto& [id, info] : gamepads_) {
-      if (info.gamepad) {
-        SDL_CloseGamepad(info.gamepad);
-      }
-    }
-    gamepads_.clear();
-  }
+  CloseAllGamepads();
 
   SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
 }

@@ -33,4 +33,11 @@ abstract class GamepadPlatform extends PlatformInterface {
   Future<void> dispose() {
     throw UnimplementedError('dispose() has not been implemented.');
   }
+
+  /// Pauses native gamepad polling, releasing device handles.
+  /// No-op on platforms that don't hold exclusive device access.
+  Future<void> pause() async {}
+
+  /// Resumes native gamepad polling after a [pause].
+  Future<void> resume() async {}
 }
