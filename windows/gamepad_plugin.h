@@ -23,7 +23,9 @@ class GamepadPlugin : public flutter::Plugin {
 
   GamepadPlugin(
       std::shared_ptr<GamepadStreamHandler> stream_handler,
-      std::unique_ptr<SdlManager> sdl_manager);
+      std::unique_ptr<SdlManager> sdl_manager,
+      flutter::PluginRegistrarWindows* registrar,
+      int window_proc_delegate_id);
 
   ~GamepadPlugin() override;
 
@@ -39,6 +41,8 @@ class GamepadPlugin : public flutter::Plugin {
 
   std::shared_ptr<GamepadStreamHandler> stream_handler_;
   std::unique_ptr<SdlManager> sdl_manager_;
+  flutter::PluginRegistrarWindows* registrar_;
+  int window_proc_delegate_id_;
 };
 
 }  // namespace gamepad

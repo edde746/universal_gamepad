@@ -8,6 +8,10 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <deque>
+#include <atomic>
+
+#include <windows.h>
 
 namespace gamepad {
 
@@ -19,12 +23,20 @@ namespace gamepad {
 class GamepadStreamHandler
     : public flutter::StreamHandler<flutter::EncodableValue> {
  public:
+  static constexpr UINT kFlushMessage = WM_APP + 0x4A91;
+
   GamepadStreamHandler();
   ~GamepadStreamHandler() override;
 
   /// Sends a gamepad event to the Dart side. Thread-safe.
   /// The event should be a flutter::EncodableMap.
   void SendEvent(const flutter::EncodableValue& event);
+
+  /// Flushes queued events on the platform thread.
+  void FlushQueuedEvents();
+
+  /// Callback used to wake platform thread to flush queued events.
+  void SetWakeCallback(std::function<void()> callback);
 
   /// Returns true if a Dart listener is currently attached.
   bool HasListener() const;
@@ -44,6 +56,9 @@ class GamepadStreamHandler
 
   mutable std::mutex sink_mutex_;
   std::unique_ptr<flutter::EventSink<flutter::EncodableValue>> event_sink_;
+  std::deque<flutter::EncodableValue> pending_events_;
+  std::function<void()> wake_callback_;
+  std::atomic<bool> flush_posted_{false};
 };
 
 /// A thin forwarding StreamHandler that delegates OnListen/OnCancel to a

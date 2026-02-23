@@ -11,6 +11,8 @@
 
 #include <memory>
 #include <string>
+#include <atomic>
+#include <optional>
 
 namespace gamepad {
 
@@ -35,9 +37,31 @@ void GamepadPlugin::RegisterWithRegistrar(
           registrar->messenger(), "dev.universal_gamepad/events",
           &flutter::StandardMethodCodec::GetInstance());
 
+  auto window_handle = std::make_shared<std::atomic<HWND>>(nullptr);
+  const int window_proc_delegate_id =
+      registrar->RegisterTopLevelWindowProcDelegate(
+          [stream_handler, window_handle](HWND hwnd, UINT message, WPARAM wparam,
+                                          LPARAM lparam) {
+            window_handle->store(hwnd);
+            if (message == GamepadStreamHandler::kFlushMessage) {
+              stream_handler->FlushQueuedEvents();
+              return std::optional<LRESULT>(0);
+            }
+            return std::optional<LRESULT>();
+          });
+
+  stream_handler->SetWakeCallback([window_handle]() {
+    const HWND hwnd = window_handle->load();
+    if (hwnd != nullptr) {
+      ::PostMessage(hwnd, GamepadStreamHandler::kFlushMessage, 0, 0);
+    }
+  });
+
   // Create the plugin instance.
   auto plugin = std::make_unique<GamepadPlugin>(std::move(stream_handler),
-                                                std::move(sdl_manager));
+                                                std::move(sdl_manager),
+                                                registrar,
+                                                window_proc_delegate_id);
 
   // Register the method call handler.
   method_channel->SetMethodCallHandler(
@@ -61,13 +85,20 @@ void GamepadPlugin::RegisterWithRegistrar(
 
 GamepadPlugin::GamepadPlugin(
     std::shared_ptr<GamepadStreamHandler> stream_handler,
-    std::unique_ptr<SdlManager> sdl_manager)
+    std::unique_ptr<SdlManager> sdl_manager,
+    flutter::PluginRegistrarWindows* registrar,
+    int window_proc_delegate_id)
     : stream_handler_(std::move(stream_handler)),
-      sdl_manager_(std::move(sdl_manager)) {}
+      sdl_manager_(std::move(sdl_manager)),
+      registrar_(registrar),
+      window_proc_delegate_id_(window_proc_delegate_id) {}
 
 GamepadPlugin::~GamepadPlugin() {
   if (sdl_manager_) {
     sdl_manager_->StopPolling();
+  }
+  if (registrar_) {
+    registrar_->UnregisterTopLevelWindowProcDelegate(window_proc_delegate_id_);
   }
 }
 

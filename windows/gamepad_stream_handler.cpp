@@ -10,9 +10,52 @@ GamepadStreamHandler::GamepadStreamHandler() = default;
 GamepadStreamHandler::~GamepadStreamHandler() = default;
 
 void GamepadStreamHandler::SendEvent(const flutter::EncodableValue& event) {
-  std::lock_guard<std::mutex> lock(sink_mutex_);
-  if (event_sink_) {
+  std::function<void()> wake_callback;
+  bool should_post = false;
+  {
+    std::lock_guard<std::mutex> lock(sink_mutex_);
+    if (!event_sink_) {
+      return;
+    }
+    pending_events_.push_back(event);
+    should_post = !flush_posted_.exchange(true);
+    wake_callback = wake_callback_;
+  }
+  if (should_post && wake_callback) {
+    wake_callback();
+  }
+}
+
+void GamepadStreamHandler::FlushQueuedEvents() {
+  std::deque<flutter::EncodableValue> local_events;
+  {
+    std::lock_guard<std::mutex> lock(sink_mutex_);
+    local_events.swap(pending_events_);
+    flush_posted_.store(false);
+    if (!event_sink_) {
+      return;
+    }
+  }
+
+  for (const auto& event : local_events) {
+    std::lock_guard<std::mutex> lock(sink_mutex_);
+    if (!event_sink_) {
+      return;
+    }
     event_sink_->Success(event);
+  }
+
+  std::function<void()> wake_callback;
+  bool should_post = false;
+  {
+    std::lock_guard<std::mutex> lock(sink_mutex_);
+    if (!pending_events_.empty()) {
+      should_post = !flush_posted_.exchange(true);
+      wake_callback = wake_callback_;
+    }
+  }
+  if (should_post && wake_callback) {
+    wake_callback();
   }
 }
 
@@ -21,12 +64,19 @@ bool GamepadStreamHandler::HasListener() const {
   return event_sink_ != nullptr;
 }
 
+void GamepadStreamHandler::SetWakeCallback(std::function<void()> callback) {
+  std::lock_guard<std::mutex> lock(sink_mutex_);
+  wake_callback_ = std::move(callback);
+}
+
 std::unique_ptr<flutter::StreamHandlerError<flutter::EncodableValue>>
 GamepadStreamHandler::OnListenInternal(
     const flutter::EncodableValue* arguments,
     std::unique_ptr<flutter::EventSink<flutter::EncodableValue>>&& events) {
   std::lock_guard<std::mutex> lock(sink_mutex_);
   event_sink_ = std::move(events);
+  pending_events_.clear();
+  flush_posted_.store(false);
   return nullptr;
 }
 
@@ -35,6 +85,8 @@ GamepadStreamHandler::OnCancelInternal(
     const flutter::EncodableValue* arguments) {
   std::lock_guard<std::mutex> lock(sink_mutex_);
   event_sink_ = nullptr;
+  pending_events_.clear();
+  flush_posted_.store(false);
   return nullptr;
 }
 
