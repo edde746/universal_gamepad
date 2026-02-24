@@ -42,7 +42,9 @@ void GamepadPlugin::RegisterWithRegistrar(
       registrar->RegisterTopLevelWindowProcDelegate(
           [stream_handler, window_handle](HWND hwnd, UINT message, WPARAM wparam,
                                           LPARAM lparam) {
-            window_handle->store(hwnd);
+            if (window_handle->load() == nullptr) {
+              window_handle->store(hwnd);
+            }
             if (message == GamepadStreamHandler::kFlushMessage) {
               stream_handler->FlushQueuedEvents();
               return std::optional<LRESULT>(0);

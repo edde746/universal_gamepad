@@ -23,7 +23,7 @@ namespace gamepad {
 class GamepadStreamHandler
     : public flutter::StreamHandler<flutter::EncodableValue> {
  public:
-  static constexpr UINT kFlushMessage = WM_APP + 0x4A91;
+  static constexpr UINT kFlushMessage = WM_APP + 1;
 
   GamepadStreamHandler();
   ~GamepadStreamHandler() override;

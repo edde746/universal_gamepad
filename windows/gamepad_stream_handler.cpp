@@ -38,10 +38,6 @@ void GamepadStreamHandler::FlushQueuedEvents() {
   }
 
   for (const auto& event : local_events) {
-    std::lock_guard<std::mutex> lock(sink_mutex_);
-    if (!event_sink_) {
-      return;
-    }
     event_sink_->Success(event);
   }
 
