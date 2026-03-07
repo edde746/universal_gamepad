@@ -183,7 +183,8 @@ private class GamepadWindowCallback(
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (isGamepadKeyEvent(event)) {
-            if (inputManager?.onKeyEvent(event) == true) return true
+            inputManager?.onKeyEvent(event)
+            return true  // Always consume — never let gamepad events enter Flutter's dispatch pipeline
         }
         return original.dispatchKeyEvent(event)
     }
