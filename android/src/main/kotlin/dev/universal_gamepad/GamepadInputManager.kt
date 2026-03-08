@@ -171,17 +171,9 @@ class GamepadInputManager(
         // Ensure device is tracked.
         ensureTracked(deviceId)
 
-        when (event.action) {
-            KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP -> {
-                val pressed = event.action == KeyEvent.ACTION_DOWN
-                val value = if (pressed) 1.0 else 0.0
-                emitButtonEvent(deviceId, timestamp, buttonIndex, pressed, value)
-            }
-            KeyEvent.ACTION_REPEAT -> {
-                // Emit as a pressed button event so Dart can handle repeat if desired
-                emitButtonEvent(deviceId, timestamp, buttonIndex, true, 1.0)
-            }
-        }
+        val pressed = event.action == KeyEvent.ACTION_DOWN
+        val value = if (pressed) 1.0 else 0.0
+        emitButtonEvent(deviceId, timestamp, buttonIndex, pressed, value)
 
         return true
     }
