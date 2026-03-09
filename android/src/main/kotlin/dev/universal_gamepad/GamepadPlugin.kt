@@ -181,15 +181,25 @@ private class GamepadWindowCallback(
     private val inputManager: GamepadInputManager?,
 ) : Window.Callback by original {
 
+    // Guards against the FlutterView redispatch loop: when Flutter doesn't
+    // handle a key event, KeyboardManager.redispatch() re-sends the same
+    // KeyEvent object through DecorView → this callback. We track forwarded
+    // events by identity so the second pass returns false, letting DecorView
+    // fall through to Activity.onKeyDown/onKeyUp (which handles BACK etc.).
+    private var lastForwardedEvent: KeyEvent? = null
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (isGamepadKeyEvent(event)) {
-            // Mapped gamepad buttons — consume and emit via EventChannel
             if (inputManager?.onKeyEvent(event) == true) return true
             // Unmapped key from gamepad-source device (e.g. KEYCODE_BACK from
-            // a virtual remote). Return false so the system handles it.
-            // DO NOT forward to original.dispatchKeyEvent() — that causes a
-            // redispatch loop via FlutterView.redispatch() → ANR.
-            return false
+            // a virtual remote). On redispatch, return false so DecorView falls
+            // through to Activity.onKeyDown → onBackPressed.
+            if (event === lastForwardedEvent) {
+                lastForwardedEvent = null
+                return false
+            }
+            lastForwardedEvent = event
+            return original.dispatchKeyEvent(event)
         }
         return original.dispatchKeyEvent(event)
     }
