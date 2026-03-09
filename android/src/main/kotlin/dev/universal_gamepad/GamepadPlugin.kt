@@ -183,8 +183,13 @@ private class GamepadWindowCallback(
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (isGamepadKeyEvent(event)) {
-            inputManager?.onKeyEvent(event)
-            return true  // Always consume — never let gamepad events enter Flutter's dispatch pipeline
+            // Mapped gamepad buttons — consume and emit via EventChannel
+            if (inputManager?.onKeyEvent(event) == true) return true
+            // Unmapped key from gamepad-source device (e.g. KEYCODE_BACK from
+            // a virtual remote). Return false so the system handles it.
+            // DO NOT forward to original.dispatchKeyEvent() — that causes a
+            // redispatch loop via FlutterView.redispatch() → ANR.
+            return false
         }
         return original.dispatchKeyEvent(event)
     }
