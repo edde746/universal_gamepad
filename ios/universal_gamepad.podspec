@@ -11,7 +11,8 @@ GameController framework on iOS.
   s.author           = { 'gamepad' => 'dev@gamepads-plus.dev' }
   s.source           = { :http => 'https://github.com/edde/gamepad' }
 
-  s.platform         = :ios, '14.0'
+  s.ios.deployment_target  = '14.0'
+  s.tvos.deployment_target = '14.0'
   s.swift_version    = '5.0'
 
   s.source_files     = 'Classes/**/*'
